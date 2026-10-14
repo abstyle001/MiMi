@@ -3,11 +3,17 @@ package org.example.project
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Card
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -17,49 +23,53 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
+import androidx.compose.ui.graphics.vector.ImageVector
+import org.example.project.ui.AppTheme
 import org.example.project.ui.ChatScreen
 import org.example.project.ui.PetHomeScreen
 import org.example.project.ui.StatsScreen
 
-private data class TabItem(val emoji: String, val label: String)
+private data class TabItem(val icon: ImageVector, val label: String, val title: String)
 
 private val tabs = listOf(
-    TabItem("🐱", "宠物"),
-    TabItem("💬", "聊天"),
-    TabItem("📊", "我的"),
+    TabItem(Icons.Filled.Pets, "宠物", "小咪"),
+    TabItem(Icons.AutoMirrored.Filled.Chat, "聊天", "和小咪聊天"),
+    TabItem(Icons.Filled.Person, "我的", "数据与设置"),
 )
 
 @Composable
 fun App() {
-    MaterialTheme {
+    AppTheme {
         val viewModel = remember { AppServices.viewModel }
         val state by viewModel.ui.collectAsState()
         var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+        val snackbarHostState = remember { SnackbarHostState() }
 
         LaunchedEffect(state.notice) {
-            if (state.notice != null) {
-                delay(3500)
+            state.notice?.let {
+                snackbarHostState.showSnackbar(it)
                 viewModel.clearNotice()
             }
         }
 
         Scaffold(
+            topBar = {
+                CenterAlignedTopAppBar(title = { Text(tabs[selectedTab].title) })
+            },
             bottomBar = {
                 NavigationBar {
                     tabs.forEachIndexed { index, tab ->
                         NavigationBarItem(
                             selected = selectedTab == index,
                             onClick = { selectedTab = index },
-                            icon = { Text(tab.emoji) },
+                            icon = { Icon(tab.icon, contentDescription = tab.label) },
                             label = { Text(tab.label) },
                         )
                     }
                 }
-            }
+            },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 when (selectedTab) {
@@ -76,16 +86,6 @@ fun App() {
                         onCheckInSleep = viewModel::checkInSleep,
                         onSaveSettings = viewModel::saveSettings,
                     )
-                }
-
-                state.notice?.let { notice ->
-                    Card(Modifier.align(Alignment.TopCenter).padding(16.dp)) {
-                        Text(
-                            text = notice,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                        )
-                    }
                 }
             }
         }

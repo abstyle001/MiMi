@@ -34,6 +34,9 @@ data class PetPersona(
     val todaySteps: Long,
 )
 
+/** 一次回复及其来源 */
+data class ChatReply(val text: String, val fromLlm: Boolean)
+
 class LlmChatService(private val client: HttpClient) {
 
     suspend fun reply(
@@ -41,14 +44,15 @@ class LlmChatService(private val client: HttpClient) {
         persona: PetPersona,
         history: List<ChatMessage>,
         userText: String,
-    ): String {
-        if (!config.isConfigured) return localReply(persona, userText)
+    ): ChatReply {
+        if (!config.isConfigured) return ChatReply(localReply(persona, userText), fromLlm = false)
         return try {
             remoteReply(config, persona, history, userText)
                 ?.takeIf { it.isNotBlank() }
-                ?: localReply(persona, userText)
+                ?.let { ChatReply(it, fromLlm = true) }
+                ?: ChatReply(localReply(persona, userText), fromLlm = false)
         } catch (_: Exception) {
-            "喵呜……网络好像不太顺畅，${localReply(persona, userText)}"
+            ChatReply("喵呜……网络好像不太顺畅，${localReply(persona, userText)}", fromLlm = false)
         }
     }
 

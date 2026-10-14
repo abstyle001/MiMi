@@ -1,6 +1,7 @@
 package org.example.project.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,17 +10,33 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.example.project.pet.GrowthEngine
 import org.example.project.pet.level
@@ -41,114 +58,131 @@ fun PetHomeScreen(
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        CatPet(
-            mood = state.pet.mood,
-            onTap = onPetTap,
-            modifier = Modifier.size(220.dp),
-        )
-
-        Text(
-            text = "${state.pet.name}  Lv.${state.pet.level} · ${state.pet.mood.label}",
-            style = MaterialTheme.typography.titleLarge,
-        )
-
-        Spacer(Modifier.height(16.dp))
-
-        StatBar(
-            label = "经验值",
-            value = state.pet.xpIntoCurrentLevel,
-            max = GrowthEngine.XP_PER_LEVEL,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Spacer(Modifier.height(8.dp))
-        StatBar(
-            label = "饱食度",
-            value = state.pet.hunger,
-            max = 100,
-            color = Color(0xFFFF9800),
-        )
-        Spacer(Modifier.height(8.dp))
-        StatBar(
-            label = "精力",
-            value = state.pet.energy,
-            max = 100,
-            color = Color(0xFF4CAF50),
-        )
-
-        Spacer(Modifier.height(16.dp))
-
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            WeatherCard(state, onRefreshWeather, Modifier.weight(1f))
-            StepsCard(state, onRefreshSteps, Modifier.weight(1f))
+        // 宠物舞台
+        Card(Modifier.fillMaxWidth()) {
+            Box(
+                Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                CatPet(
+                    mood = state.pet.mood,
+                    onTap = onPetTap,
+                    modifier = Modifier.size(210.dp),
+                )
+            }
         }
 
-        Spacer(Modifier.height(16.dp))
+        // 名字 + 等级 + 心情
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                state.pet.name,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.width(8.dp))
+            Badge(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) { Text("Lv.${state.pet.level}") }
+            Spacer(Modifier.width(8.dp))
+            SuggestionChip(onClick = {}, label = { Text(state.pet.mood.label) })
+        }
 
+        // 属性
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatRow(Icons.Filled.Star, "经验值", state.pet.xpIntoCurrentLevel, GrowthEngine.XP_PER_LEVEL, MaterialTheme.colorScheme.primary)
+                StatRow(Icons.Filled.Restaurant, "饱食度", state.pet.hunger, 100, Color(0xFFE07B39))
+                StatRow(Icons.Filled.Bolt, "精力", state.pet.energy, 100, Color(0xFF5F9E52))
+            }
+        }
+
+        // 天气 / 步数
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            ElevatedCard(onClick = onRefreshWeather, modifier = Modifier.weight(1f)) {
+                Column(Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.WbSunny, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(4.dp))
+                        Text("天气 · ${state.city.name}", style = MaterialTheme.typography.titleSmall)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    val weather = state.weather
+                    Text(
+                        if (weather != null) "${state.weatherDesc} ${weather.temperatureC}℃" else state.weatherDesc,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        "点击刷新",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+            ElevatedCard(onClick = onRefreshSteps, modifier = Modifier.weight(1f)) {
+                Column(Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.DirectionsWalk, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(4.dp))
+                        Text("今日步数", style = MaterialTheme.typography.titleSmall)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    if (state.stepsSupported) {
+                        Text("${state.todaySteps} 步", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "已转化 +${state.todayStepXp} XP",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    } else {
+                        Text(
+                            "此设备暂不支持计步",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+
+        // 喂食
         val feedsLeft = (GrowthEngine.MAX_FEEDS_PER_DAY - state.feedsUsedToday).coerceAtLeast(0)
-        Button(onClick = onFeed, enabled = feedsLeft > 0) {
-            Text("喂食 🐟（今日剩余 $feedsLeft 次）")
+        FilledTonalButton(onClick = onFeed, enabled = feedsLeft > 0) {
+            Icon(Icons.Filled.Restaurant, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("喂食（今日剩余 $feedsLeft 次）")
         }
     }
 }
 
 @Composable
-private fun StatBar(label: String, value: Int, max: Int, color: Color) {
-    Column(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth()) {
+private fun StatRow(icon: ImageVector, label: String, value: Int, max: Int, color: Color) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
             Text(label, style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.weight(1f))
-            Text("$value/$max", style = MaterialTheme.typography.bodyMedium)
-        }
-        LinearProgressIndicator(
-            progress = { (value / max.toFloat()).coerceIn(0f, 1f) },
-            modifier = Modifier.fillMaxWidth(),
-            color = color,
-        )
-    }
-}
-
-@Composable
-private fun WeatherCard(state: PetUiState, onRefresh: () -> Unit, modifier: Modifier = Modifier) {
-    Card(onClick = onRefresh, modifier = modifier) {
-        Column(Modifier.padding(12.dp).fillMaxWidth()) {
-            Text("天气 · ${state.city.name}", style = MaterialTheme.typography.titleSmall)
-            Spacer(Modifier.height(4.dp))
-            val weather = state.weather
-            if (weather != null) {
-                Text(
-                    "${GrowthEngine.weatherEmoji(weather.weatherCode)} ${state.weatherDesc} ${weather.temperatureC}℃",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            } else {
-                Text(state.weatherDesc, style = MaterialTheme.typography.bodyMedium)
-            }
             Text(
-                "点我刷新",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(top = 4.dp),
+                "$value/$max",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-    }
-}
-
-@Composable
-private fun StepsCard(state: PetUiState, onRefresh: () -> Unit, modifier: Modifier = Modifier) {
-    Card(onClick = onRefresh, modifier = modifier) {
-        Column(Modifier.padding(12.dp).fillMaxWidth()) {
-            Text("今日步数", style = MaterialTheme.typography.titleSmall)
-            Spacer(Modifier.height(4.dp))
-            if (state.stepsSupported) {
-                Text("🚶 ${state.todaySteps} 步", style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    "已转化 +${state.todayStepXp} XP",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            } else {
-                Text("此设备暂不支持计步", style = MaterialTheme.typography.bodySmall)
-            }
-        }
+        Spacer(Modifier.height(4.dp))
+        LinearProgressIndicator(
+            progress = { (value / max.toFloat()).coerceIn(0f, 1f) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp)),
+            color = color,
+            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            strokeCap = StrokeCap.Round,
+            drawStopIndicator = {},
+        )
     }
 }

@@ -260,7 +260,9 @@ class PetViewModel(
             val reply = chatService.reply(_ui.value.llmConfig, persona, _ui.value.chatMessages, trimmed)
             _ui.update {
                 it.copy(
-                    chatMessages = it.chatMessages + ChatMessage(ChatMessage.Role.PET, reply, nowEpochMs()),
+                    chatMessages = it.chatMessages + ChatMessage(
+                        ChatMessage.Role.PET, reply.text, nowEpochMs(), fromLlm = reply.fromLlm,
+                    ),
                     chatSending = false,
                 )
             }
