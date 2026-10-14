@@ -45,4 +45,8 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    lint {
+        // local.properties 由 Android Studio 生成，其 Windows 路径写法会触发误报
+        disable += "PropertyEscape"
+    }
 }
