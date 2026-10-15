@@ -154,9 +154,11 @@ class PetViewModel(
         val today = todayString()
         var baseline = if (repository.stepBaselineDate() == today) repository.stepBaseline() else -1L
         if (baseline < 0 || cumulative < baseline) {
-            baseline = cumulative
+            // 新的一天或设备重启：优先用上次记录的累计读数做基线，找回打开 App 之前走的步数
+            baseline = GrowthEngine.initialStepBaseline(cumulative, repository.lastStepCumulative())
             repository.setStepBaseline(today, baseline)
         }
+        repository.setLastStepCumulative(cumulative)
         val stepsToday = (cumulative - baseline).coerceAtLeast(0L)
         val earnedXp = GrowthEngine.xpForSteps(stepsToday)
         val givenXp = if (repository.stepXpDate() == today) repository.stepXpToday() else 0

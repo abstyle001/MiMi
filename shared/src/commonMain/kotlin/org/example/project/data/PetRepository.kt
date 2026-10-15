@@ -38,6 +38,10 @@ class PetRepository(private val settings: Settings) {
         settings.putInt(KEY_STEP_XP_TODAY, xp)
     }
 
+    /** 最近一次成功读到的传感器累计步数，用作新一天的基线种子 */
+    fun lastStepCumulative(): Long = settings.getLong(KEY_STEP_LAST_CUMULATIVE, -1L)
+    fun setLastStepCumulative(cumulative: Long) = settings.putLong(KEY_STEP_LAST_CUMULATIVE, cumulative)
+
     // ---- 每日首次打开 ----
 
     fun lastOpenDate(): String = settings.getString(KEY_LAST_OPEN_DATE, "")
@@ -119,6 +123,7 @@ class PetRepository(private val settings: Settings) {
         const val KEY_STEP_BASELINE_DATE = "step_baseline_date"
         const val KEY_STEP_XP_DATE = "step_xp_date"
         const val KEY_STEP_XP_TODAY = "step_xp_today"
+        const val KEY_STEP_LAST_CUMULATIVE = "step_last_cumulative"
         const val KEY_LAST_OPEN_DATE = "last_open_date"
         const val KEY_CHAT_XP_DATE = "chat_xp_date"
         const val KEY_CHAT_XP_TODAY = "chat_xp_today"

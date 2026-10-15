@@ -21,6 +21,14 @@ object GrowthEngine {
     /** 8000 步 → +20 XP */
     fun xpForSteps(steps: Long): Int = (steps / STEPS_PER_XP).toInt()
 
+    /**
+     * 确定某天的计步基线（传感器返回的是开机累计值）。
+     * 优先沿用上次记录的累计读数，找回上次读数之后、本次打开之前走的步数；
+     * 无历史记录（-1）或累计值回退（设备重启）时退回当前读数。
+     */
+    fun initialStepBaseline(currentCumulative: Long, lastKnownCumulative: Long): Long =
+        if (lastKnownCumulative in 0..currentCumulative) lastKnownCumulative else currentCumulative
+
     /** 抚摸/点击：每日前 MAX_PETTING_XP_PER_DAY 次每次 +1 */
     fun xpForPetting(usedToday: Int): Int =
         if (usedToday < MAX_PETTING_XP_PER_DAY) PETTING_XP else 0

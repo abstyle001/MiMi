@@ -15,6 +15,20 @@ class GrowthEngineTest {
     }
 
     @Test
+    fun stepBaselineCarriesOverLastReading() {
+        // 昨天关 App 时累计 8000，今天打开时 9500 → 基线 8000，找回 1500 步
+        assertEquals(8000, GrowthEngine.initialStepBaseline(currentCumulative = 9500, lastKnownCumulative = 8000))
+    }
+
+    @Test
+    fun stepBaselineFallsBackOnRebootOrNoRecord() {
+        // 设备重启后累计值回退 → 退回当前读数
+        assertEquals(120, GrowthEngine.initialStepBaseline(currentCumulative = 120, lastKnownCumulative = 8000))
+        // 没有任何历史记录 → 退回当前读数
+        assertEquals(500, GrowthEngine.initialStepBaseline(currentCumulative = 500, lastKnownCumulative = -1))
+    }
+
+    @Test
     fun sleepXpTiers() {
         assertEquals(15, GrowthEngine.xpForSleep(7.0))
         assertEquals(15, GrowthEngine.xpForSleep(8.5))
