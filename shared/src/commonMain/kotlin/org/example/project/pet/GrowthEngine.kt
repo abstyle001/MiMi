@@ -88,9 +88,10 @@ object GrowthEngine {
         return PetMood.NORMAL
     }
 
-    fun addXp(state: PetState, amount: Int, nowEpochMs: Long): PetState {
+    /** 只累加经验；lastUpdatedEpochMs 是衰减结算时钟，由 applyTimeDecay / 喂食 / 睡眠打卡维护 */
+    fun addXp(state: PetState, amount: Int): PetState {
         if (amount <= 0) return state
-        return state.copy(xp = state.xp + amount, lastUpdatedEpochMs = nowEpochMs)
+        return state.copy(xp = state.xp + amount)
     }
 
     /** 按离线时长衰减：饱食度每小时 -2，精力每小时 -1 */

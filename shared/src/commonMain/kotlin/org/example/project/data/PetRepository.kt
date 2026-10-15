@@ -1,7 +1,9 @@
 package org.example.project.data
 
 import com.russhwolf.settings.Settings
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import org.example.project.chat.ChatMessage
 import org.example.project.chat.LlmConfig
 import org.example.project.pet.PetState
 
@@ -76,6 +78,18 @@ class PetRepository(private val settings: Settings) {
         if (settings.hasKey(KEY_LAST_SLEEP_HOURS)) settings.getDouble(KEY_LAST_SLEEP_HOURS, 0.0) else null
     fun setLastSleepHours(hours: Double) = settings.putDouble(KEY_LAST_SLEEP_HOURS, hours)
 
+    // ---- 聊天记录 ----
+
+    fun loadChatMessages(): List<ChatMessage> =
+        settings.getStringOrNull(KEY_CHAT_MESSAGES)
+            ?.let { runCatching { json.decodeFromString(ListSerializer(ChatMessage.serializer()), it) }.getOrNull() }
+            ?: emptyList()
+
+    fun saveChatMessages(messages: List<ChatMessage>) {
+        val trimmed = messages.takeLast(MAX_CHAT_HISTORY)
+        settings.putString(KEY_CHAT_MESSAGES, json.encodeToString(ListSerializer(ChatMessage.serializer()), trimmed))
+    }
+
     // ---- LLM 配置 ----
 
     fun loadLlmConfig(): LlmConfig = LlmConfig(
@@ -114,6 +128,8 @@ class PetRepository(private val settings: Settings) {
         const val KEY_PETTING_COUNT = "petting_count"
         const val KEY_SLEEP_SETTLED_DATE = "sleep_settled_date"
         const val KEY_LAST_SLEEP_HOURS = "last_sleep_hours"
+        const val KEY_CHAT_MESSAGES = "chat_messages"
+        const val MAX_CHAT_HISTORY = 50
         const val KEY_LLM_BASE_URL = "llm_base_url"
         const val KEY_LLM_API_KEY = "llm_api_key"
         const val KEY_LLM_MODEL = "llm_model"

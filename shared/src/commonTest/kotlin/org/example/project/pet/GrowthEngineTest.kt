@@ -99,8 +99,15 @@ class GrowthEngineTest {
 
     @Test
     fun addXpCrossesLevel() {
-        val pet = GrowthEngine.addXp(PetState(xp = 99), 5, nowEpochMs = 1L)
+        val pet = GrowthEngine.addXp(PetState(xp = 99), 5)
         assertEquals(104, pet.xp)
         assertEquals(2, GrowthEngine.levelForXp(pet.xp))
+    }
+
+    @Test
+    fun addXpKeepsDecayClockUntouched() {
+        val start = PetState(xp = 0, lastUpdatedEpochMs = 1_000_000L)
+        val pet = GrowthEngine.addXp(start, 10)
+        assertEquals(1_000_000L, pet.lastUpdatedEpochMs)
     }
 }

@@ -1,5 +1,8 @@
 package org.example.project.chat
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class ChatMessage(
     val role: Role,
     val content: String,

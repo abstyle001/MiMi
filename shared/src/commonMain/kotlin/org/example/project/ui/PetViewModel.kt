@@ -57,13 +57,16 @@ class PetViewModel(
             llmConfig = repository.loadLlmConfig(),
             city = repository.loadCity(),
             lastSleepHours = repository.lastSleepHours(),
+            chatMessages = repository.loadChatMessages(),
         )
     )
     val ui: StateFlow<PetUiState> = _ui.asStateFlow()
 
+    private var lastTickDate: String = todayString()
+
     init {
         viewModelScope.launch { bootstrap() }
-        viewModelScope.launch { pollStepsLoop() }
+        viewModelScope.launch { tickLoop() }
     }
 
     private suspend fun bootstrap() {
@@ -73,7 +76,7 @@ class PetViewModel(
         val today = todayString()
         if (repository.lastOpenDate() != today) {
             repository.setLastOpenDate(today)
-            pet = addXp(pet, GrowthEngine.DAILY_OPEN_XP, now)
+            pet = addXp(pet, GrowthEngine.DAILY_OPEN_XP)
         }
 
         val weather = weatherDataSource.currentWeather(_ui.value.city.lat, _ui.value.city.lon)
@@ -95,11 +98,45 @@ class PetViewModel(
         refreshStepsInternal()
     }
 
-    private suspend fun pollStepsLoop() {
+    /** 周期任务：跨天重置、在线衰减结算、步数刷新 */
+    private suspend fun tickLoop() {
         while (viewModelScope.isActive) {
-            delay(STEP_POLL_INTERVAL_MS)
+            delay(TICK_INTERVAL_MS)
+            checkDateRollover()
+            applyLiveDecay()
             refreshStepsInternal()
         }
+    }
+
+    /** 挂过 0 点后，把 UI 缓存的「今日」计数按新日期重新推导（仓库层本身按日存取，无需清理） */
+    private fun checkDateRollover() {
+        val today = todayString()
+        if (today == lastTickDate) return
+        lastTickDate = today
+        _ui.update {
+            it.copy(
+                sleepCheckedToday = repository.sleepSettledDate() == today,
+                chatXpToday = if (repository.chatXpDate() == today) repository.chatXpToday() else 0,
+                feedsUsedToday = if (repository.feedDate() == today) repository.feedCount() else 0,
+                pettingsUsedToday = if (repository.pettingDate() == today) repository.pettingCount() else 0,
+            )
+        }
+    }
+
+    /** 会话期间的实时衰减：每满 1 小时结算一次，不足 1 小时的部分留给下次结算或启动时的离线结算 */
+    private fun applyLiveDecay() {
+        val now = nowEpochMs()
+        val current = _ui.value.pet
+        if (current.lastUpdatedEpochMs <= 0L) return
+        if (now - current.lastUpdatedEpochMs < DECAY_SETTLE_INTERVAL_MS) return
+        val decayed = GrowthEngine.applyTimeDecay(current, now)
+        val pet = decayed.copy(
+            mood = GrowthEngine.resolveMood(
+                decayed.hunger, decayed.energy, _ui.value.weather?.weatherCode, _ui.value.lastSleepHours
+            )
+        )
+        repository.savePet(pet)
+        _ui.update { it.copy(pet = pet) }
     }
 
     // ---- 步数 ----
@@ -125,10 +162,10 @@ class PetViewModel(
         val givenXp = if (repository.stepXpDate() == today) repository.stepXpToday() else 0
         var pet = _ui.value.pet
         if (earnedXp > givenXp) {
-            pet = addXp(pet, earnedXp - givenXp, nowEpochMs())
+            // 静默累计，不弹提示，避免走路时每 30 秒刷一次 Snackbar；升级提示由 addXp 负责
+            pet = addXp(pet, earnedXp - givenXp)
             repository.setStepXp(today, earnedXp)
             repository.savePet(pet)
-            notify("今日已走 $stepsToday 步，经验 +${earnedXp - givenXp}")
         }
         _ui.update { it.copy(pet = pet, todaySteps = stepsToday, todayStepXp = earnedXp, stepsSupported = true) }
     }
@@ -195,7 +232,7 @@ class PetViewModel(
             lastUpdatedEpochMs = now,
         )
         val xp = GrowthEngine.xpForSleep(hours)
-        pet = addXp(pet, xp, now)
+        pet = addXp(pet, xp)
         pet = pet.copy(
             mood = GrowthEngine.resolveMood(pet.hunger, pet.energy, _ui.value.weather?.weatherCode, hours)
         )
@@ -218,7 +255,7 @@ class PetViewModel(
             return
         }
         repository.setPetting(today, used + 1)
-        val pet = addXp(_ui.value.pet, xp, nowEpochMs())
+        val pet = addXp(_ui.value.pet, xp)
         repository.savePet(pet)
         _ui.update { it.copy(pet = pet, pettingsUsedToday = used + 1) }
         notify("摸摸头～经验 +$xp")
@@ -236,7 +273,7 @@ class PetViewModel(
             val today = todayString()
             var chatXp = if (repository.chatXpDate() == today) repository.chatXpToday() else 0
             if (chatXp < GrowthEngine.MAX_CHAT_XP_PER_DAY) {
-                pet = addXp(pet, GrowthEngine.CHAT_XP_PER_MESSAGE, now)
+                pet = addXp(pet, GrowthEngine.CHAT_XP_PER_MESSAGE)
                 chatXp = (chatXp + GrowthEngine.CHAT_XP_PER_MESSAGE).coerceAtMost(GrowthEngine.MAX_CHAT_XP_PER_DAY)
                 repository.setChatXp(today, chatXp)
                 repository.savePet(pet)
@@ -244,7 +281,9 @@ class PetViewModel(
 
             val userMsg = ChatMessage(ChatMessage.Role.USER, trimmed, now)
             _ui.update {
-                it.copy(pet = pet, chatMessages = it.chatMessages + userMsg, chatSending = true, chatXpToday = chatXp)
+                val messages = it.chatMessages + userMsg
+                repository.saveChatMessages(messages)
+                it.copy(pet = pet, chatMessages = messages, chatSending = true, chatXpToday = chatXp)
             }
 
             val persona = PetPersona(
@@ -259,12 +298,11 @@ class PetViewModel(
             )
             val reply = chatService.reply(_ui.value.llmConfig, persona, _ui.value.chatMessages, trimmed)
             _ui.update {
-                it.copy(
-                    chatMessages = it.chatMessages + ChatMessage(
-                        ChatMessage.Role.PET, reply.text, nowEpochMs(), fromLlm = reply.fromLlm,
-                    ),
-                    chatSending = false,
+                val messages = it.chatMessages + ChatMessage(
+                    ChatMessage.Role.PET, reply.text, nowEpochMs(), fromLlm = reply.fromLlm,
                 )
+                repository.saveChatMessages(messages)
+                it.copy(chatMessages = messages, chatSending = false)
             }
         }
     }
@@ -283,10 +321,10 @@ class PetViewModel(
         _ui.update { it.copy(notice = null) }
     }
 
-    private fun addXp(pet: PetState, amount: Int, now: Long): PetState {
+    private fun addXp(pet: PetState, amount: Int): PetState {
         if (amount <= 0) return pet
         val levelBefore = pet.level
-        val updated = GrowthEngine.addXp(pet, amount, now)
+        val updated = GrowthEngine.addXp(pet, amount)
         if (updated.level > levelBefore) {
             notify("🎉 升级啦！${pet.name} 现在是 Lv.${updated.level}")
         }
@@ -298,6 +336,7 @@ class PetViewModel(
     }
 
     private companion object {
-        const val STEP_POLL_INTERVAL_MS = 30_000L
+        const val TICK_INTERVAL_MS = 30_000L
+        const val DECAY_SETTLE_INTERVAL_MS = 3_600_000L
     }
 }
