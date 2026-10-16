@@ -1,7 +1,7 @@
 package org.example.project.ui.cat
 
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -36,6 +36,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -48,14 +49,22 @@ import kotlinproject.shared.generated.resources.cat_lazy
 import kotlinproject.shared.generated.resources.cat_normal
 import kotlinproject.shared.generated.resources.cat_sad
 import kotlinproject.shared.generated.resources.cat_sleepy
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.random.Random
 import org.example.project.pet.PetMood
 import org.jetbrains.compose.resources.DrawableResource
+import org.jetbrains.compose.resources.decodeToImageBitmap
+import org.jetbrains.compose.resources.getDrawableResourceBytes
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.rememberResourceEnvironment
 
 private class FloatParticle(val id: Long, val emoji: String, val xBias: Float)
+
+/** 点击时短暂展示的表情 key（非心情，而是互动反应） */
+private const val TAP_REACTION_KEY = "tap_excited"
 
 /** 心情 → 精灵图（assets/cat 导入的 3D 粘土渲染风橘猫，透明底 1024×1024） */
 private fun moodImage(mood: PetMood): DrawableResource = when (mood) {
@@ -67,9 +76,12 @@ private fun moodImage(mood: PetMood): DrawableResource = when (mood) {
     PetMood.SAD -> Res.drawable.cat_sad
 }
 
+private fun imageForKey(key: String): DrawableResource =
+    if (key == TAP_REACTION_KEY) Res.drawable.cat_excited else moodImage(PetMood.valueOf(key))
+
 /**
  * 3D 渲染风猫咪精灵图 + 程序带动效：呼吸缩放、果冻感点击弹跳、
- * 地面软阴影、上浮粒子，动画节奏随 [mood] 变化。
+ * 贴纸弹跳式表情切换、地面软阴影、上浮粒子，动画节奏随 [mood] 变化。
  * 图集替换只需改 [moodImage] 映射，调用方签名不变。
  */
 @Composable
@@ -111,27 +123,68 @@ fun CatPet(
         label = "floatY",
     )
 
-    // ---- 点击：下蹲蓄力 → 拉伸起跳 → 落地压扁 → 果冻回弹，期间切换兴奋表情 ----
+    // ---- 点击：下蹲蓄力 → 换兴奋表情拉伸起跳 → 加速落地 → 压扁果冻回弹 ----
     val hop = remember { Animatable(0f) }
     val squash = remember { Animatable(1f) }
+    val stretch = remember { Animatable(1f) }
+    val tilt = remember { Animatable(0f) }
     var tapSeq by remember { mutableIntStateOf(0) }
     var tapHappy by remember { mutableStateOf(false) }
     LaunchedEffect(tapSeq) {
         if (tapSeq == 0) return@LaunchedEffect
-        tapHappy = true
         hop.snapTo(0f)
         squash.snapTo(1f)
-        squash.animateTo(1f - 0.1f * squashAmp, tween(90))
+        stretch.snapTo(1f)
+        tilt.snapTo(0f)
+        // 1) 蓄力下蹲（表情不变，像真的在攒劲）
+        squash.animateTo(1f - 0.12f * squashAmp, tween(110, easing = FastOutLinearInEasing))
+        // 2) 起跳瞬间换兴奋表情，纵向拉伸 + 微侧倾，跳起慢、落回快
+        tapHappy = true
         launch {
-            hop.animateTo(-16f, tween(150, easing = LinearOutSlowInEasing))
-            hop.animateTo(0f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow))
+            hop.animateTo(-18f, tween(220, easing = LinearOutSlowInEasing))
+            hop.animateTo(0f, tween(180, easing = FastOutLinearInEasing))
         }
-        squash.animateTo(1f + 0.08f * squashAmp, tween(150))
-        squash.animateTo(1f, tween(200))
+        launch {
+            tilt.animateTo(-4f, tween(140))
+            tilt.animateTo(0f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium))
+        }
+        launch {
+            stretch.animateTo(1f + 0.07f * squashAmp, tween(120))
+            stretch.animateTo(1f, tween(150))
+        }
+        // 3) 空中形态恢复正常，等待落地（跳起共约 400ms）
+        squash.animateTo(1f, tween(120))
+        delay(150)
+        // 4) 落地压扁 → 果冻回弹
         squash.animateTo(1f - 0.1f * squashAmp, tween(70))
         squash.animateTo(1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium))
-        delay(250)
+        delay(350)
         tapHappy = false
+    }
+
+    // ---- 表情切换：缩小收起 → 换图 → 弹性放大（贴纸弹跳式，避免叠影） ----
+    val desiredKey = if (tapHappy) TAP_REACTION_KEY else mood.name
+    var shownKey by remember { mutableStateOf(desiredKey) }
+    val swap = remember { Animatable(1f) }
+    LaunchedEffect(desiredKey) {
+        if (desiredKey == shownKey) return@LaunchedEffect
+        swap.animateTo(0f, tween(130, easing = FastOutLinearInEasing))
+        shownKey = desiredKey
+        swap.animateTo(1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium))
+    }
+
+    // ---- 后台异步预解码全部精灵图：切换直接用内存位图，不在 UI 线程解码 ----
+    var bitmaps by remember { mutableStateOf<Map<String, ImageBitmap>>(emptyMap()) }
+    val resourceEnv = rememberResourceEnvironment()
+    LaunchedEffect(Unit) {
+        val decoded = withContext(Dispatchers.Default) {
+            PetMood.entries.mapNotNull { m ->
+                runCatching {
+                    m.name to getDrawableResourceBytes(resourceEnv, moodImage(m)).decodeToImageBitmap()
+                }.getOrNull()
+            }
+        }
+        bitmaps = decoded.toMap()
     }
 
     // ---- 上浮粒子（爱心 / Zzz）----
@@ -150,8 +203,6 @@ fun CatPet(
             spawnParticles("💤", 1)
         }
     }
-
-    val shownImage = if (tapHappy) Res.drawable.cat_excited else moodImage(mood)
 
     Box(
         modifier = modifier
@@ -181,25 +232,24 @@ fun CatPet(
             )
         }
 
-        // 猫咪精灵图：心情切换淡入淡出，呼吸/果冻形变叠加在整体上
-        Crossfade(
-            targetState = shownImage,
-            animationSpec = tween(300),
-            label = "moodImage",
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    translationY = (floatY + hop.value) * density
-                    scaleX = 1f + (1f - squash.value) * 0.6f
-                    scaleY = breath * squash.value
-                    transformOrigin = TransformOrigin(0.5f, 0.9f)
-                },
-        ) { image ->
-            Image(
-                painter = painterResource(image),
-                contentDescription = mood.label,
-                modifier = Modifier.fillMaxSize(),
-            )
+        // 猫咪精灵图：呼吸/果冻形变/侧倾叠加在整体上，换图经 swap 弹跳过渡
+        // 优先用预解码位图；预加载完成前（首帧/预览截图）回退 painterResource
+        val shownBitmap = bitmaps[if (shownKey == TAP_REACTION_KEY) PetMood.EXCITED.name else shownKey]
+        val swapScale = 0.85f + 0.15f * swap.value
+        val imageModifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                translationY = (floatY + hop.value) * density
+                rotationZ = tilt.value
+                scaleX = (1f + (1f - squash.value) * 0.6f - (stretch.value - 1f) * 0.4f) * swapScale
+                scaleY = breath * squash.value * stretch.value * swapScale
+                alpha = 0.5f + 0.5f * swap.value
+                transformOrigin = TransformOrigin(0.5f, 0.9f)
+            }
+        if (shownBitmap != null) {
+            Image(bitmap = shownBitmap, contentDescription = mood.label, modifier = imageModifier)
+        } else {
+            Image(painter = painterResource(imageForKey(shownKey)), contentDescription = mood.label, modifier = imageModifier)
         }
 
         particles.forEach { particle ->
