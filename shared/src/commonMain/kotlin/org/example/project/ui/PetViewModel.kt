@@ -22,7 +22,9 @@ import org.example.project.data.nowEpochMs
 import org.example.project.data.todayString
 import org.example.project.pet.GrowthEngine
 import org.example.project.pet.PetState
+import org.example.project.pet.MAX_PET_NAME_LENGTH
 import org.example.project.pet.level
+import org.example.project.pet.sanitizePetName
 import org.example.project.pet.xpIntoCurrentLevel
 
 data class PetUiState(
@@ -307,6 +309,22 @@ class PetViewModel(
                 it.copy(chatMessages = messages, chatSending = false)
             }
         }
+    }
+
+    // ---- 重命名 ----
+
+    /** 改宠物名：非法输入弹提示，合法则随宠物状态一起持久化（name 是 PetState 的既有字段，无需额外 KV） */
+    fun renamePet(raw: String) {
+        val name = sanitizePetName(raw)
+        if (name == null) {
+            notify("名字不能为空，最多 ${MAX_PET_NAME_LENGTH} 个字符")
+            return
+        }
+        if (name == _ui.value.pet.name) return
+        val pet = _ui.value.pet.copy(name = name)
+        repository.savePet(pet)
+        _ui.update { it.copy(pet = pet) }
+        notify("已改名为「$name」")
     }
 
     // ---- 设置 ----

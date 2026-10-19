@@ -17,19 +17,28 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,7 +48,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.example.project.pet.GrowthEngine
+import org.example.project.pet.MAX_PET_NAME_LENGTH
 import org.example.project.pet.level
+import org.example.project.pet.sanitizePetName
 import org.example.project.pet.xpIntoCurrentLevel
 import org.example.project.ui.cat.CatPet
 
@@ -50,6 +61,7 @@ fun PetHomeScreen(
     onRefreshSteps: () -> Unit,
     onRefreshWeather: () -> Unit,
     onPetTap: () -> Unit,
+    onRename: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -75,19 +87,36 @@ fun PetHomeScreen(
         }
 
         // 名字 + 等级 + 心情
+        var showRenameDialog by remember { mutableStateOf(false) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 state.pet.name,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(4.dp))
+            IconButton(onClick = { showRenameDialog = true }, modifier = Modifier.size(28.dp)) {
+                Icon(
+                    Icons.Filled.Edit,
+                    contentDescription = "重命名",
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(4.dp))
             Badge(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) { Text("Lv.${state.pet.level}") }
             Spacer(Modifier.width(8.dp))
             SuggestionChip(onClick = {}, label = { Text(state.pet.mood.label) })
+        }
+        if (showRenameDialog) {
+            RenamePetDialog(
+                currentName = state.pet.name,
+                onRename = onRename,
+                onDismiss = { showRenameDialog = false },
+            )
         }
 
         // 属性
@@ -156,6 +185,42 @@ fun PetHomeScreen(
             Text("喂食（今日剩余 $feedsLeft 次）")
         }
     }
+}
+
+@Composable
+private fun RenamePetDialog(
+    currentName: String,
+    onRename: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf(currentName) }
+    val valid = sanitizePetName(name) != null
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("重命名") },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { if (it.length <= MAX_PET_NAME_LENGTH) name = it },
+                label = { Text("宠物名字") },
+                singleLine = true,
+                isError = !valid,
+                supportingText = {
+                    Text(
+                        if (valid) "最多 ${MAX_PET_NAME_LENGTH} 个字符"
+                        else "名字不能为空",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                },
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onRename(name); onDismiss() }, enabled = valid) { Text("确定") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        },
+    )
 }
 
 @Composable

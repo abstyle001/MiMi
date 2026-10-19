@@ -27,3 +27,17 @@ data class PetState(
 val PetState.level: Int get() = GrowthEngine.levelForXp(xp)
 
 val PetState.xpIntoCurrentLevel: Int get() = GrowthEngine.xpIntoCurrentLevel(xp)
+
+/** 宠物名最大长度（字符数） */
+const val MAX_PET_NAME_LENGTH = 12
+
+/**
+ * 校验并清洗用户输入的宠物名：去首尾空白、剔除内部换行/制表等控制符。
+ * 清洗后为空或超过 [MAX_PET_NAME_LENGTH] 个字符时返回 null，表示非法输入。
+ */
+fun sanitizePetName(raw: String): String? {
+    val name = raw.trim().filterNot { it == '\n' || it == '\r' || it == '\t' }
+    if (name.isEmpty()) return null
+    if (name.length > MAX_PET_NAME_LENGTH) return null
+    return name
+}

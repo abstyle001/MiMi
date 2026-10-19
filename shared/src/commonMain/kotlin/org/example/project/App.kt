@@ -30,13 +30,20 @@ import org.example.project.ui.ChatScreen
 import org.example.project.ui.PetHomeScreen
 import org.example.project.ui.StatsScreen
 
-private data class TabItem(val icon: ImageVector, val label: String, val title: String)
+private data class TabItem(val icon: ImageVector, val label: String)
 
 private val tabs = listOf(
-    TabItem(Icons.Filled.Pets, "宠物", "小咪"),
-    TabItem(Icons.AutoMirrored.Filled.Chat, "聊天", "和小咪聊天"),
-    TabItem(Icons.Filled.Person, "我的", "数据与设置"),
+    TabItem(Icons.Filled.Pets, "宠物"),
+    TabItem(Icons.AutoMirrored.Filled.Chat, "聊天"),
+    TabItem(Icons.Filled.Person, "我的"),
 )
+
+/** 顶栏标题跟随宠物名动态变化（重命名后立即生效） */
+private fun tabTitle(selectedTab: Int, petName: String): String = when (selectedTab) {
+    0 -> petName
+    1 -> "和${petName}聊天"
+    else -> "数据与设置"
+}
 
 @Composable
 fun App() {
@@ -55,7 +62,7 @@ fun App() {
 
         Scaffold(
             topBar = {
-                CenterAlignedTopAppBar(title = { Text(tabs[selectedTab].title) })
+                CenterAlignedTopAppBar(title = { Text(tabTitle(selectedTab, state.pet.name)) })
             },
             bottomBar = {
                 NavigationBar {
@@ -79,6 +86,7 @@ fun App() {
                         onRefreshSteps = viewModel::refreshSteps,
                         onRefreshWeather = viewModel::refreshWeather,
                         onPetTap = viewModel::petThePet,
+                        onRename = viewModel::renamePet,
                     )
                     1 -> ChatScreen(state = state, onSend = viewModel::sendChat)
                     else -> StatsScreen(

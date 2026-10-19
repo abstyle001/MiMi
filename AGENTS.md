@@ -34,6 +34,7 @@ Kotlin Multiplatform 跨端「手机宠物」App（宠物名：小咪）。Andro
 4. 新版 AGP 9 KMP 库插件的 Android 单测任务是 `testAndroidHostTest`，**不是** `testDebugUnitTest`。
 5. 模拟器黑屏 ≠ App 崩溃：先开系统设置验证是否全局黑屏，是则 AVD 图形改 Software（或 `emulator -gpu swiftshader_indirect` 启动）。
 6. 环境路径：SDK 在 `D:\Android\Sdk`（`adb` 需 `export PATH="/d/Android/Sdk/platform-tools:$PATH"`）；adb 操作安卓路径时加 `export MSYS_NO_PATHCONV=1` 防止 Git Bash 篡改 `/sdcard/...`。
+7. **桌面正常但只有 App 黑屏** = `hw.gpu.mode=auto` 落到了 SwiftShader 软渲染（特征：进程存活、Activity resumed、`dumpsys gfxinfo` 显示已渲染数千帧 Skia(OpenGL) 但画面全黑）。修复：把 `~/.android/avd/<AVD>.avd/config.ini` 的 `hw.gpu.mode` 改成 `host`（已改，Pixel_9_Pro）。诊断时用 `screencap` 截图 + `dumpsys gfxinfo` 判断是"没画"还是"画了没上屏"。
 
 ## UI 约定
 
