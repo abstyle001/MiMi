@@ -96,6 +96,67 @@ object GrowthEngine {
         return PetMood.NORMAL
     }
 
+    // ---- 每日任务 ----
+
+    /** 步数任务每天必出（核心玩法），其余任务从池中轮转 2 个 */
+    private val questPool = listOf(QuestType.FEED, QuestType.CHAT, QuestType.SLEEP, QuestType.PETTING)
+
+    /** 任务进度取到该值即视为满格（目标值本身封顶展示） */
+    private const val QUEST_BAR_MAX = 6
+
+    fun questTarget(type: QuestType): Int = when (type) {
+        QuestType.STEPS -> 5000
+        QuestType.FEED -> 1
+        QuestType.CHAT -> 3
+        QuestType.SLEEP -> 1
+        QuestType.PETTING -> 5
+    }
+
+    fun questXpReward(type: QuestType): Int = when (type) {
+        QuestType.STEPS -> 10
+        QuestType.FEED -> 6
+        QuestType.CHAT -> 8
+        QuestType.SLEEP -> 10
+        QuestType.PETTING -> 6
+    }
+
+    /** yyyy-MM-dd → 年内天序（纯字符串算术，跨平台结果一致，不用 hashCode） */
+    private fun dayOfYear(date: String): Int {
+        val parts = date.split("-")
+        if (parts.size != 3) return 0
+        val year = parts[0].toIntOrNull() ?: 0
+        val month = parts[1].toIntOrNull() ?: 1
+        val day = parts[2].toIntOrNull() ?: 1
+        val cum = intArrayOf(0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334)
+        val leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+        val febExtra = if (leap && month > 2) 1 else 0
+        return cum[month.coerceIn(1, 12) - 1] + febExtra + day
+    }
+
+    /** 生成某天的 3 个每日任务：步数固定 + 池中轮转 2 个 */
+    fun selectDailyQuests(date: String): List<DailyQuest> {
+        val day = dayOfYear(date)
+        val two = listOf(questPool[day % 4], questPool[(day + 2) % 4])
+        return (listOf(QuestType.STEPS) + two).map {
+            DailyQuest(id = it.name.lowercase(), type = it, target = questTarget(it), xpReward = questXpReward(it))
+        }
+    }
+
+    /** 任务进度按目标值封顶 */
+    fun questProgress(quest: DailyQuest, activity: QuestActivity): Int = when (quest.type) {
+        QuestType.STEPS -> activity.steps
+        QuestType.FEED -> activity.feedCount
+        QuestType.CHAT -> activity.chatMessageCount
+        QuestType.SLEEP -> if (activity.sleepChecked) 1 else 0
+        QuestType.PETTING -> activity.pettingCount
+    }.coerceIn(0, quest.target)
+
+    /** 任务进度占格数：整数换算避免浮点边界（如 1/3×6 恰好等于 2），有进度未完成时至少留 1 格 */
+    fun questFillCount(progress: Int, target: Int): Int {
+        if (progress <= 0) return 0
+        return (progress * QUEST_BAR_MAX / target).coerceIn(1, QUEST_BAR_MAX)
+    }
+
     /** 只累加经验；lastUpdatedEpochMs 是衰减结算时钟，由 applyTimeDecay / 喂食 / 睡眠打卡维护 */
     fun addXp(state: PetState, amount: Int): PetState {
         if (amount <= 0) return state

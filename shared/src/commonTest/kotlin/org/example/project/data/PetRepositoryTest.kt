@@ -46,4 +46,22 @@ class PetRepositoryTest {
         settings.putString("chat_messages", "{not json")
         assertEquals(emptyList(), PetRepository(settings).loadChatMessages())
     }
+
+    @Test
+    fun chatMessageCountUsesDateKey() {
+        val repo = PetRepository(MapSettings())
+        repo.setChatMsg("2026-10-20", 2)
+        assertEquals(2, repo.chatMsgCount())
+        // 换天后读取方按 date 判断，旧值自然失效
+        assertEquals("2026-10-20", repo.chatMsgDate())
+    }
+
+    @Test
+    fun claimedQuestIdsRoundTripAndResetNextDay() {
+        val repo = PetRepository(MapSettings())
+        repo.addClaimedQuestIds("2026-10-20", setOf("feed"))
+        repo.addClaimedQuestIds("2026-10-20", setOf("chat"))
+        assertEquals(setOf("feed", "chat"), repo.claimedQuestIds("2026-10-20"))
+        assertEquals(emptySet(), repo.claimedQuestIds("2026-10-21"))
+    }
 }

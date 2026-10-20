@@ -20,8 +20,10 @@ import org.example.project.data.WeatherDataSource
 import org.example.project.data.WeatherInfo
 import org.example.project.data.nowEpochMs
 import org.example.project.data.todayString
+import org.example.project.pet.DailyQuestState
 import org.example.project.pet.GrowthEngine
 import org.example.project.pet.PetState
+import org.example.project.pet.QuestActivity
 import org.example.project.pet.MAX_PET_NAME_LENGTH
 import org.example.project.pet.level
 import org.example.project.pet.sanitizePetName
@@ -41,6 +43,7 @@ data class PetUiState(
     val pettingsUsedToday: Int = 0,
     val sleepCheckedToday: Boolean = false,
     val lastSleepHours: Double? = null,
+    val dailyQuests: List<DailyQuestState> = emptyList(),
     val llmConfig: LlmConfig = LlmConfig(),
     val city: CityPreset = CityPreset.DEFAULT,
     /** 一次性提示条（升级 / 结算等），展示几秒后清除 */
@@ -95,6 +98,7 @@ class PetViewModel(
                 chatXpToday = if (repository.chatXpDate() == today) repository.chatXpToday() else 0,
                 feedsUsedToday = if (repository.feedDate() == today) repository.feedCount() else 0,
                 pettingsUsedToday = if (repository.pettingDate() == today) repository.pettingCount() else 0,
+                dailyQuests = buildQuests(today),
             )
         }
         refreshStepsInternal()
@@ -121,6 +125,7 @@ class PetViewModel(
                 chatXpToday = if (repository.chatXpDate() == today) repository.chatXpToday() else 0,
                 feedsUsedToday = if (repository.feedDate() == today) repository.feedCount() else 0,
                 pettingsUsedToday = if (repository.pettingDate() == today) repository.pettingCount() else 0,
+                dailyQuests = buildQuests(today),
             )
         }
     }
@@ -172,6 +177,7 @@ class PetViewModel(
             repository.savePet(pet)
         }
         _ui.update { it.copy(pet = pet, todaySteps = stepsToday, todayStepXp = earnedXp, stepsSupported = true) }
+        refreshQuests()
     }
 
     // ---- 天气 ----
@@ -217,6 +223,7 @@ class PetViewModel(
         )
         repository.savePet(pet)
         _ui.update { it.copy(pet = pet, feedsUsedToday = used) }
+        refreshQuests()
         notify("${_ui.value.pet.name}吃得很开心！饱食度 +${GrowthEngine.FEED_HUNGER_RESTORE}")
     }
 
@@ -242,6 +249,7 @@ class PetViewModel(
         )
         repository.savePet(pet)
         _ui.update { it.copy(pet = pet, sleepCheckedToday = true, lastSleepHours = hours) }
+        refreshQuests()
         notify(
             if (xp > 0) "睡眠打卡成功，经验 +$xp，精力恢复到 ${pet.energy}"
             else "睡得太少啦，${_ui.value.pet.name}好困……"
@@ -262,6 +270,7 @@ class PetViewModel(
         val pet = addXp(_ui.value.pet, xp)
         repository.savePet(pet)
         _ui.update { it.copy(pet = pet, pettingsUsedToday = used + 1) }
+        refreshQuests()
         notify("摸摸头～经验 +$xp")
     }
 
@@ -282,6 +291,9 @@ class PetViewModel(
                 repository.setChatXp(today, chatXp)
                 repository.savePet(pet)
             }
+            // 每日消息条数独立计数（XP 封顶后仍要继续累计，供聊天任务进度使用）
+            val chatMsgs = if (repository.chatMsgDate() == today) repository.chatMsgCount() else 0
+            repository.setChatMsg(today, chatMsgs + 1)
 
             val userMsg = ChatMessage(ChatMessage.Role.USER, trimmed, now)
             _ui.update {
@@ -289,6 +301,7 @@ class PetViewModel(
                 repository.saveChatMessages(messages)
                 it.copy(pet = pet, chatMessages = messages, chatSending = true, chatXpToday = chatXp)
             }
+            refreshQuests()
 
             val persona = PetPersona(
                 name = pet.name,
@@ -349,6 +362,40 @@ class PetViewModel(
             notify("🎉 升级啦！${pet.name} 现在是 Lv.${updated.level}")
         }
         return updated
+    }
+
+    // ---- 每日任务 ----
+
+    /** 从仓库层按日计数重建当天任务快照（进度评估全走 GrowthEngine 纯函数） */
+    private fun buildQuests(today: String = todayString()): List<DailyQuestState> {
+        val activity = QuestActivity(
+            steps = _ui.value.todaySteps.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+            feedCount = if (repository.feedDate() == today) repository.feedCount() else 0,
+            chatMessageCount = if (repository.chatMsgDate() == today) repository.chatMsgCount() else 0,
+            sleepChecked = repository.sleepSettledDate() == today,
+            pettingCount = if (repository.pettingDate() == today) repository.pettingCount() else 0,
+        )
+        val claimed = repository.claimedQuestIds(today)
+        return GrowthEngine.selectDailyQuests(today).map { quest ->
+            DailyQuestState(quest, GrowthEngine.questProgress(quest, activity), quest.id in claimed)
+        }
+    }
+
+    /** 行为后刷新任务进度（在 UI/仓库更新完成后调用） */
+    private fun refreshQuests() {
+        _ui.update { it.copy(dailyQuests = buildQuests()) }
+    }
+
+    fun claimDailyQuests() {
+        val today = todayString()
+        val claimable = _ui.value.dailyQuests.filter { it.completed && !it.claimed }
+        if (claimable.isEmpty()) return
+        val xp = claimable.sumOf { it.quest.xpReward }
+        repository.addClaimedQuestIds(today, claimable.map { it.quest.id }.toSet())
+        val pet = addXp(_ui.value.pet, xp)
+        repository.savePet(pet)
+        _ui.update { it.copy(pet = pet, dailyQuests = buildQuests(today)) }
+        notify("任务完成！经验 +$xp")
     }
 
     private fun notify(message: String) {

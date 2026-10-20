@@ -87,6 +87,7 @@ fun App() {
                         onRefreshWeather = viewModel::refreshWeather,
                         onPetTap = viewModel::petThePet,
                         onRename = viewModel::renamePet,
+                        onClaimQuests = viewModel::claimDailyQuests,
                     )
                     1 -> ChatScreen(state = state, onSend = viewModel::sendChat)
                     else -> StatsScreen(

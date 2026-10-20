@@ -74,6 +74,30 @@ class PetRepository(private val settings: Settings) {
         settings.putInt(KEY_PETTING_COUNT, count)
     }
 
+    // ---- 每日聊天消息条数（任务进度用，与 chatXp 上限解耦） ----
+
+    fun chatMsgDate(): String = settings.getString(KEY_CHAT_MSG_DATE, "")
+    fun chatMsgCount(): Int = settings.getInt(KEY_CHAT_MSG_COUNT, 0)
+    fun setChatMsg(date: String, count: Int) {
+        settings.putString(KEY_CHAT_MSG_DATE, date)
+        settings.putInt(KEY_CHAT_MSG_COUNT, count)
+    }
+
+    // ---- 每日任务 ----
+
+    fun questDate(): String = settings.getString(KEY_QUEST_DATE, "")
+
+    /** 当天已领取奖励的任务 id；跨天时自动视为空 */
+    fun claimedQuestIds(date: String): Set<String> =
+        if (questDate() != date) emptySet()
+        else settings.getString(KEY_CLAIMED_QUEST_IDS, "").split(',').filter { it.isNotBlank() }.toSet()
+
+    fun addClaimedQuestIds(date: String, ids: Set<String>) {
+        settings.putString(KEY_QUEST_DATE, date)
+        val merged = claimedQuestIds(date) + ids
+        settings.putString(KEY_CLAIMED_QUEST_IDS, merged.joinToString(","))
+    }
+
     // ---- 睡眠 ----
 
     fun sleepSettledDate(): String = settings.getString(KEY_SLEEP_SETTLED_DATE, "")
@@ -131,6 +155,10 @@ class PetRepository(private val settings: Settings) {
         const val KEY_FEED_COUNT = "feed_count"
         const val KEY_PETTING_DATE = "petting_date"
         const val KEY_PETTING_COUNT = "petting_count"
+        const val KEY_CHAT_MSG_DATE = "chat_msg_date"
+        const val KEY_CHAT_MSG_COUNT = "chat_msg_count"
+        const val KEY_QUEST_DATE = "quest_date"
+        const val KEY_CLAIMED_QUEST_IDS = "claimed_quest_ids"
         const val KEY_SLEEP_SETTLED_DATE = "sleep_settled_date"
         const val KEY_LAST_SLEEP_HOURS = "last_sleep_hours"
         const val KEY_CHAT_MESSAGES = "chat_messages"

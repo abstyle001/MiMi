@@ -1,5 +1,6 @@
 package org.example.project.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,9 +16,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.WbSunny
@@ -47,8 +53,10 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import org.example.project.pet.DailyQuestState
 import org.example.project.pet.GrowthEngine
 import org.example.project.pet.MAX_PET_NAME_LENGTH
+import org.example.project.pet.QuestType
 import org.example.project.pet.level
 import org.example.project.pet.sanitizePetName
 import org.example.project.pet.xpIntoCurrentLevel
@@ -62,6 +70,7 @@ fun PetHomeScreen(
     onRefreshWeather: () -> Unit,
     onPetTap: () -> Unit,
     onRename: (String) -> Unit,
+    onClaimQuests: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -184,7 +193,95 @@ fun PetHomeScreen(
             Spacer(Modifier.width(6.dp))
             Text("喂食（今日剩余 $feedsLeft 次）")
         }
+
+        // 每日任务
+        DailyQuestsCard(quests = state.dailyQuests, onClaim = onClaimQuests)
     }
+}
+
+@Composable
+private fun DailyQuestsCard(quests: List<DailyQuestState>, onClaim: () -> Unit) {
+    if (quests.isEmpty()) return
+    val claimable = quests.filter { it.completed && !it.claimed }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("每日任务", style = MaterialTheme.typography.titleSmall)
+            quests.forEach { qs ->
+                QuestRow(qs)
+            }
+            if (claimable.isNotEmpty()) {
+                FilledTonalButton(onClick = onClaim) {
+                    Text("领取奖励（+${claimable.sumOf { it.quest.xpReward }} XP）")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuestRow(qs: DailyQuestState) {
+    val done = qs.completed
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            questIcon(qs.quest.type),
+            null,
+            Modifier.size(16.dp),
+            tint = if (done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            qs.quest.label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.weight(1f))
+        if (qs.claimed) {
+            Icon(
+                Icons.Filled.CheckCircle,
+                "已领取",
+                Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        } else {
+            QuestProgressDots(qs)
+        }
+    }
+}
+
+/** 完成 ✓、进行中的 6 格进度条、未开始 ×，一眼分辨任务状态 */
+@Composable
+private fun QuestProgressDots(qs: DailyQuestState) {
+    val filled = GrowthEngine.questFillCount(qs.progress, qs.quest.target)
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        if (qs.progress == 0) {
+            Icon(
+                Icons.Filled.Close,
+                "未开始",
+                Modifier.size(14.dp),
+                tint = MaterialTheme.colorScheme.outline,
+            )
+        } else {
+            repeat(6) { index ->
+                Box(
+                    Modifier
+                        .size(14.dp, 8.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(
+                            if (index < filled) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceContainerHighest
+                        ),
+                )
+            }
+        }
+    }
+}
+
+private fun questIcon(type: QuestType): ImageVector = when (type) {
+    QuestType.STEPS -> Icons.Filled.DirectionsWalk
+    QuestType.FEED -> Icons.Filled.Restaurant
+    QuestType.CHAT -> Icons.AutoMirrored.Filled.Chat
+    QuestType.SLEEP -> Icons.Filled.Bedtime
+    QuestType.PETTING -> Icons.Filled.Favorite
 }
 
 @Composable
