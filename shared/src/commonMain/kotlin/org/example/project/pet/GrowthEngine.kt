@@ -4,15 +4,19 @@ object GrowthEngine {
 
     const val XP_PER_LEVEL = 100
     const val STEPS_PER_XP = 400
+    const val STEPS_PER_COIN = 1000
     const val CHAT_XP_PER_MESSAGE = 2
     const val MAX_CHAT_XP_PER_DAY = 10
+    const val CHAT_COIN_PER_MESSAGE = 1
+    const val MAX_CHAT_COINS_PER_DAY = 5
     const val DAILY_OPEN_XP = 1
-    const val FEED_HUNGER_RESTORE = 30
+    const val FEED_COIN_REWARD = 1
     const val MAX_FEEDS_PER_DAY = 3
     const val PETTING_XP = 1
     const val MAX_PETTING_XP_PER_DAY = 5
     const val FISH_GAME_XP_PER_FISH = 1
     const val MAX_FISH_GAME_XP_PER_DAY = 10
+    const val TOY_PLAY_XP = 5
     const val HUNGER_DECAY_PER_HOUR = 2
     const val ENERGY_DECAY_PER_HOUR = 1
 
@@ -40,6 +44,51 @@ object GrowthEngine {
         val remaining = (MAX_FISH_GAME_XP_PER_DAY - usedToday)
             .coerceIn(0, MAX_FISH_GAME_XP_PER_DAY)
         return (score.coerceAtLeast(0) * FISH_GAME_XP_PER_FISH).coerceAtMost(remaining)
+    }
+
+    // ---- 金币 ----
+
+    /** 走路金币：每满 1000 步 +1，按当日总步数结算，重复刷新不会重复发放 */
+    fun coinsForSteps(steps: Long): Int = (steps / STEPS_PER_COIN).toInt()
+
+    /** 聊天金币：每句 +1，每日封顶 */
+    fun coinsForChat(usedToday: Int): Int =
+        if (usedToday < MAX_CHAT_COINS_PER_DAY) CHAT_COIN_PER_MESSAGE else 0
+
+    /** 每日任务金币奖励：步数/睡眠这类高门槛任务给得更多 */
+    fun questCoinReward(type: QuestType): Int = when (type) {
+        QuestType.STEPS -> 8
+        QuestType.FEED -> 5
+        QuestType.CHAT -> 6
+        QuestType.SLEEP -> 8
+        QuestType.PETTING -> 5
+    }
+
+    fun addCoins(state: PetState, amount: Int): PetState {
+        if (amount <= 0) return state
+        return state.copy(coins = state.coins + amount)
+    }
+
+    /** 食物恢复后的饱食度（封顶 100） */
+    fun feedHunger(currentHunger: Int, item: ShopItem): Int =
+        (currentHunger + item.hungerRestore).coerceIn(0, 100)
+
+    /**
+     * 购买校验：金币足够；食物可重复购买，玩具 / 配饰只能买一次。
+     * 每日喂食次数上限由调用方（ViewModel）额外把关。
+     */
+    fun canPurchase(state: PetState, item: ShopItem): Boolean =
+        state.coins >= item.price &&
+            (item.category == ShopCategory.FOOD || item.id !in state.ownedItemIds)
+
+    /** 扣金币并记录已购商品；金币不足或重复购买返回 null */
+    fun purchase(state: PetState, item: ShopItem): PetState? {
+        if (!canPurchase(state, item)) return null
+        return state.copy(
+            coins = state.coins - item.price,
+            ownedItemIds = if (item.category == ShopCategory.FOOD) state.ownedItemIds
+            else state.ownedItemIds + item.id,
+        )
     }
 
     fun xpForSleep(hours: Double): Int = when {
@@ -147,7 +196,13 @@ object GrowthEngine {
         val day = dayOfYear(date)
         val two = listOf(questPool[day % 4], questPool[(day + 2) % 4])
         return (listOf(QuestType.STEPS) + two).map {
-            DailyQuest(id = it.name.lowercase(), type = it, target = questTarget(it), xpReward = questXpReward(it))
+            DailyQuest(
+                id = it.name.lowercase(),
+                type = it,
+                target = questTarget(it),
+                xpReward = questXpReward(it),
+                coinReward = questCoinReward(it),
+            )
         }
     }
 

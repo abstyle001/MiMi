@@ -16,6 +16,7 @@ data class DailyQuest(
     val type: QuestType,
     val target: Int,
     val xpReward: Int,
+    val coinReward: Int,
 ) {
     val label: String get() = when (type) {
         QuestType.STEPS -> "走满 $target 步"

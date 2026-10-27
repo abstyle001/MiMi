@@ -89,6 +89,10 @@ fun App() {
                         onRename = viewModel::renamePet,
                         onClaimQuests = viewModel::claimDailyQuests,
                         onGameFinished = viewModel::finishFishGame,
+                        onBuyItem = viewModel::buyShopItem,
+                        onPlayWithToy = viewModel::playWithToy,
+                        onEquipAccessory = viewModel::equipAccessory,
+                        onClearAccessory = viewModel::clearAccessorySlot,
                     )
                     1 -> ChatScreen(state = state, onSend = viewModel::sendChat)
                     else -> StatsScreen(

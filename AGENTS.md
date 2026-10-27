@@ -6,12 +6,32 @@ Kotlin Multiplatform 跨端「手机宠物」App（宠物名：小咪）。Andro
 
 ## 架构要点
 
-- `pet/GrowthEngine.kt`：全部成长规则都是**纯函数**（步数换算、睡眠分档、天气→心情、离线衰减、升级曲线）。新玩法规则先进这里，并配 `commonTest` 单测。
+- `pet/GrowthEngine.kt`：全部成长规则都是**纯函数**（步数换算、睡眠分档、天气→心情、离线衰减、升级曲线、金币产出、商店购买校验）。新玩法规则先进这里，并配 `commonTest` 单测。
 - `ui/PetViewModel.kt`：唯一的状态聚合者（StateFlow），通过 `AppServices`（commonMain 里的 lazy 单例）装配，不走 DI 框架。
-- `data/PetRepository.kt`：multiplatform-settings KV 持久化。**按日计数（喂食/抚摸/聊天 XP）统一用「date + count」双 key 模式**（参照 `feedDate/feedCount`）。
+- `data/PetRepository.kt`：multiplatform-settings KV 持久化。**按日计数（喂食/抚摸/聊天 XP/步数金币/聊天金币）统一用「date + count」双 key 模式**（参照 `feedDate/feedCount`）。
 - `data/PlatformServices.kt`：`expect fun createSettings()` / `expect fun createStepDataSource()`，各平台 actual 在同名后缀文件里。
 - `chat/LlmChatService.kt`：OpenAI 兼容协议。**降级契约不能破坏**：任何失败（无 Key/断网/空响应）都要返回 `ChatReply(fromLlm = false)`，UI 靠它显示「AI 回复/离线回复」标签。
-- `ui/cat/CatPet.kt`：Canvas 程序化绘制的猫，虚拟坐标系 240×240，光源固定左上方。`CatPet(mood, onTap)` 签名即接口——将来换 Lottie/精灵图实现时调用方不动。
+- `ui/cat/CatPet.kt`：精灵图（`composeResources/drawable/cat_*`）+ 程序化呼吸/跳跃/粒子动效。配饰通过 `accessories: Set<String>`（已装备 id）叠加绘制，背景画在猫身后，默认空集合，老调用方不必改。
+- 背景配饰分两层：主页 / 装扮页的舞台用 `AccessoryBackground(id, Modifier.matchParentSize())` 铺满整张 Card（圆角由 Card 裁切），同时给 `CatPet` 传 `drawBackground = false`；只有独立渲染（预览图、单猫组件）才让 `CatPet` 自己画背景。不要让背景只铺在 210dp 精灵图方框里，否则会出现「框中框」。
+- `pet/Accessory.kt`：装扮目录与规则（槽位、解锁途径、装备读写、旧存档迁移），全部纯函数，配 `commonTest`。
+- `pet/Shop.kt` + `ui/ShopScreen.kt`：商店商品目录与界面。食物购买后立即喂食，玩具/配饰一次性永久解锁；商品 `id` 是持久化键，改名会导致老用户已购记录失效。
+
+## 金币与商店
+
+- 产出：每 1000 步 +1（按日结算）、每次喂食 +1、每句聊天 +1（每日上限 5）、完成每日任务 +5~8。
+- 消耗：高级猫粮（罐头 +50 / 小鱼干 +70）购买后立即喂食，仍计入每日 3 次喂食上限；毛线球（永久陪玩，每天 +5 XP）；配饰见下节「配饰 / 装扮」。
+- 余额存 `PetState.coins`，已购玩具/配饰存 `PetState.ownedItemIds`；按日产出用 `stepCoinDate/stepCoinToday`、`chatCoinDate/chatCoinToday` 双 key，避免重复发放。
+- 新商品加进 `ShopCatalog.items`；购买校验统一走 `GrowthEngine.canPurchase / purchase`，不要在 UI 里手算金币。
+- 商店里的配饰商品 id 必须与 `AccessoryCatalog` 同名条目一致，购买后由 ViewModel 自动装备到对应槽位。
+
+## 配饰 / 装扮
+
+- `pet/Accessory.kt` 是唯一配饰目录：`AccessorySlot`（HEAD / NECK / BACKGROUND）+ `AccessoryUnlock`（`Shop` / `AchievementReward` / `LevelGift`）。每个槽位最多一件，背景层绘制在猫咪身后。
+- 解锁判定统一走 `isAccessoryUnlocked / unlockedAccessoryIds`：商店看 `ownedItemIds`、成就看已解锁成就集合、等级礼包看 `PetState.level`，不要在 UI 里散落判断。
+- 装备状态存 `PetState.equippedHead / equippedNeck / equippedBackground`（空串 = 该槽空置）；读写用 `equippedId / withEquipped / equippedAccessoryIds` 扩展，`CatPet(accessories = pet.equippedAccessoryIds)` 直接消费。
+- 旧存档迁移：`PetState.accessoriesInitialized = false` 时，`PetRepository.loadPet()` 调 `migrateEquippedAccessories` 把已购商店配饰补装到对应槽位；迁移标记置位后，用户取下的配饰不会被重新装上。
+- 新配饰三步：① 在 `AccessoryCatalog` 加条目（id 是持久化键，别改名）；② 商店出售的话在 `ShopCatalog` 加同 id、同价格商品；③ 在 `CatPet.drawAccessory`（帽子/项圈）或 `drawAccessoryBackground`（背景）加绘制分支。改完补 `AccessoryTest` 与 `CatPreviewRender.renderAccessoryShowcase`，跑渲染目检对位。
+- 购买配饰后 `PetViewModel.buyShopItem` 自动装备；升级 / 成就解锁的配饰只在 Snackbar 提示，是否穿戴由用户在 `ui/WardrobeScreen.kt` 决定。
 
 ## 常用命令（Windows + Git Bash）
 
@@ -21,7 +41,7 @@ Kotlin Multiplatform 跨端「手机宠物」App（宠物名：小咪）。Andro
 ./gradlew :shared:jvmTest                 # 跑单测（最快）
 ./gradlew :shared:testAndroidHostTest     # Android 宿主单测（注意：不叫 testDebugUnitTest）
 ./gradlew :desktopApp:run                 # 桌面预览（功能完整，无步数）
-./gradlew :shared:jvmTest --tests "*CatPreviewRender*"  # 渲染猫咪/聊天页 PNG 到 shared/build/catpreviews/
+./gradlew :shared:jvmTest --tests "*CatPreviewRender*"  # 渲染猫咪/配饰/聊天/商店/主页/装扮 PNG 到 shared/build/catpreviews/
 ```
 
 改完代码的最低验证：`:shared:jvmTest` + `:androidApp:assembleDebug` + `:shared:compileKotlinJs :shared:compileKotlinWasmJs`（后两个用来兜住 expect/actual 完整性）。

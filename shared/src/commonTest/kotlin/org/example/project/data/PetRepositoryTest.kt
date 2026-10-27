@@ -107,4 +107,59 @@ class PetRepositoryTest {
         assertEquals("2026-10-27", repo.gameXpDate())
         assertEquals(6, repo.gameXpToday())
     }
+
+    @Test
+    fun dailyCoinCountersUseDateKeys() {
+        val repo = PetRepository(MapSettings())
+        repo.setStepCoin("2026-10-27", 5)
+        repo.setChatCoin("2026-10-27", 3)
+        assertEquals("2026-10-27", repo.stepCoinDate())
+        assertEquals(5, repo.stepCoinToday())
+        assertEquals("2026-10-27", repo.chatCoinDate())
+        assertEquals(3, repo.chatCoinToday())
+    }
+
+    @Test
+    fun toyPlayDatePersists() {
+        val settings = MapSettings()
+        PetRepository(settings).setToyPlayDate("2026-10-27")
+        assertEquals("2026-10-27", PetRepository(settings).toyPlayDate())
+    }
+
+    @Test
+    fun coinsAndOwnedItemsRoundTripThroughPetState() {
+        val repo = PetRepository(MapSettings())
+        repo.savePet(PetState(coins = 42, ownedItemIds = setOf("yarn_ball", "red_bow")))
+        val loaded = repo.loadPet()
+        assertEquals(42, loaded.coins)
+        assertEquals(setOf("yarn_ball", "red_bow"), loaded.ownedItemIds)
+    }
+
+    @Test
+    fun legacyOwnedAccessoriesAreEquippedOnLoad() {
+        val repo = PetRepository(MapSettings())
+        repo.savePet(PetState(ownedItemIds = setOf("red_bow")))
+        val loaded = repo.loadPet()
+        assertEquals("red_bow", loaded.equippedNeck)
+        assertEquals(true, loaded.accessoriesInitialized)
+    }
+
+    @Test
+    fun equippedAccessoriesRoundTrip() {
+        val settings = MapSettings()
+        PetRepository(settings).savePet(
+            PetState(
+                equippedHead = "party_hat",
+                equippedNeck = "bell_collar",
+                equippedBackground = "bg_starry",
+                accessoriesInitialized = true,
+            )
+        )
+        val loaded = PetRepository(settings).loadPet()
+        assertEquals("party_hat", loaded.equippedHead)
+        assertEquals("bell_collar", loaded.equippedNeck)
+        assertEquals("bg_starry", loaded.equippedBackground)
+        // 已初始化过的存档不会被迁移逻辑覆盖
+        assertEquals("bell_collar", loaded.equippedNeck)
+    }
 }

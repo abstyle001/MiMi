@@ -160,7 +160,7 @@ class GrowthEngineTest {
         assertEquals(5000, GrowthEngine.questProgress(steps, QuestActivity(steps = 99999)))
         assertEquals(0, GrowthEngine.questProgress(steps, QuestActivity(steps = -5)))
 
-        val sleep = DailyQuest("sleep", QuestType.SLEEP, 1, 10)
+        val sleep = DailyQuest("sleep", QuestType.SLEEP, 1, 10, 8)
         assertEquals(1, GrowthEngine.questProgress(sleep, QuestActivity(sleepChecked = true)))
         assertEquals(0, GrowthEngine.questProgress(sleep, QuestActivity(sleepChecked = false)))
     }
@@ -212,5 +212,77 @@ class GrowthEngineTest {
         assertEquals(2, GrowthEngine.xpForFishGame(9, 8))
         assertEquals(0, GrowthEngine.xpForFishGame(9, 10))
         assertEquals(0, GrowthEngine.xpForFishGame(-3, 0))
+    }
+
+    // ---- 金币 / 商店 ----
+
+    @Test
+    fun stepCoinsEveryThousandSteps() {
+        assertEquals(0, GrowthEngine.coinsForSteps(999))
+        assertEquals(1, GrowthEngine.coinsForSteps(1000))
+        assertEquals(5, GrowthEngine.coinsForSteps(5999))
+        assertEquals(6, GrowthEngine.coinsForSteps(6000))
+        assertEquals(0, GrowthEngine.coinsForSteps(-10))
+    }
+
+    @Test
+    fun chatCoinsCapPerDay() {
+        assertEquals(1, GrowthEngine.coinsForChat(0))
+        assertEquals(1, GrowthEngine.coinsForChat(4))
+        assertEquals(0, GrowthEngine.coinsForChat(5))
+        assertEquals(0, GrowthEngine.coinsForChat(99))
+    }
+
+    @Test
+    fun addCoinsIgnoresNonPositiveAmounts() {
+        assertEquals(10, GrowthEngine.addCoins(PetState(coins = 10), 0).coins)
+        assertEquals(10, GrowthEngine.addCoins(PetState(coins = 10), -3).coins)
+        assertEquals(25, GrowthEngine.addCoins(PetState(coins = 10), 15).coins)
+    }
+
+    @Test
+    fun purchaseDeductsCoinsAndRecordsOwnership() {
+        val purchased = GrowthEngine.purchase(PetState(coins = 100), ShopCatalog.RED_BOW)
+        assertEquals(40, purchased?.coins)
+        assertEquals(setOf(ShopCatalog.RED_BOW.id), purchased?.ownedItemIds)
+        // 玩具 / 配饰不能重复购买
+        assertNull(GrowthEngine.purchase(purchased!!, ShopCatalog.RED_BOW))
+    }
+
+    @Test
+    fun purchaseRejectsWhenCoinsInsufficient() {
+        assertNull(GrowthEngine.purchase(PetState(coins = 14), ShopCatalog.CANNED_FOOD))
+        assertEquals(0, GrowthEngine.purchase(PetState(coins = 15), ShopCatalog.CANNED_FOOD)?.coins)
+    }
+
+    @Test
+    fun foodPurchaseDoesNotEnterInventory() {
+        val purchased = GrowthEngine.purchase(PetState(coins = 30), ShopCatalog.DRIED_FISH)
+        assertEquals(0, purchased?.coins)
+        assertEquals(emptySet(), purchased?.ownedItemIds)
+        // 食物是消耗品，已买过也不影响再次购买
+        assertEquals(
+            true,
+            GrowthEngine.canPurchase(
+                PetState(coins = 30, ownedItemIds = setOf(ShopCatalog.DRIED_FISH.id)),
+                ShopCatalog.DRIED_FISH,
+            ),
+        )
+    }
+
+    @Test
+    fun feedHungerRestoresByItemAndClampsAtFull() {
+        assertEquals(50, GrowthEngine.feedHunger(0, ShopCatalog.CANNED_FOOD))
+        assertEquals(100, GrowthEngine.feedHunger(60, ShopCatalog.CANNED_FOOD))
+        assertEquals(80, GrowthEngine.feedHunger(10, ShopCatalog.DRIED_FISH))
+        assertEquals(100, GrowthEngine.feedHunger(95, ShopCatalog.DRIED_FISH))
+    }
+
+    @Test
+    fun dailyQuestsCarryPositiveCoinRewards() {
+        GrowthEngine.selectDailyQuests("2026-10-27").forEach { quest ->
+            assertEquals(GrowthEngine.questCoinReward(quest.type), quest.coinReward)
+            assertEquals(true, quest.coinReward > 0)
+        }
     }
 }

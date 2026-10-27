@@ -23,15 +23,26 @@ import org.example.project.data.todayString
 import org.example.project.pet.Achievement
 import org.example.project.pet.AchievementState
 import org.example.project.pet.AchievementStats
+import org.example.project.pet.AccessoryCatalog
+import org.example.project.pet.AccessorySlot
 import org.example.project.pet.DailyQuestState
 import org.example.project.pet.GrowthEngine
 import org.example.project.pet.PetState
 import org.example.project.pet.QuestActivity
 import org.example.project.pet.MAX_PET_NAME_LENGTH
+import org.example.project.pet.ShopCatalog
+import org.example.project.pet.ShopCategory
+import org.example.project.pet.ShopItem
 import org.example.project.pet.achievementProgress
+import org.example.project.pet.achievementRewardAccessories
 import org.example.project.pet.checkAchievements
+import org.example.project.pet.equippedId
+import org.example.project.pet.isAccessoryUnlocked
 import org.example.project.pet.level
+import org.example.project.pet.levelGiftAccessories
 import org.example.project.pet.sanitizePetName
+import org.example.project.pet.unlockHint
+import org.example.project.pet.withEquipped
 
 data class PetUiState(
     val pet: PetState = PetState(),
@@ -48,6 +59,7 @@ data class PetUiState(
     val pettingsUsedToday: Int = 0,
     val sleepCheckedToday: Boolean = false,
     val lastSleepHours: Double? = null,
+    val toyPlayedToday: Boolean = false,
     val dailyQuests: List<DailyQuestState> = emptyList(),
     val achievements: List<AchievementState> = emptyList(),
     val llmConfig: LlmConfig = LlmConfig(),
@@ -105,6 +117,7 @@ class PetViewModel(
                 gameXpToday = if (repository.gameXpDate() == today) repository.gameXpToday() else 0,
                 feedsUsedToday = if (repository.feedDate() == today) repository.feedCount() else 0,
                 pettingsUsedToday = if (repository.pettingDate() == today) repository.pettingCount() else 0,
+                toyPlayedToday = repository.toyPlayDate() == today,
                 dailyQuests = buildQuests(today),
             )
         }
@@ -133,6 +146,7 @@ class PetViewModel(
                 gameXpToday = if (repository.gameXpDate() == today) repository.gameXpToday() else 0,
                 feedsUsedToday = if (repository.feedDate() == today) repository.feedCount() else 0,
                 pettingsUsedToday = if (repository.pettingDate() == today) repository.pettingCount() else 0,
+                toyPlayedToday = repository.toyPlayDate() == today,
                 dailyQuests = buildQuests(today),
             )
         }
@@ -179,13 +193,22 @@ class PetViewModel(
         recordLifetimeSteps(today, stepsToday)
         val earnedXp = GrowthEngine.xpForSteps(stepsToday)
         val givenXp = if (repository.stepXpDate() == today) repository.stepXpToday() else 0
+        val earnedCoins = GrowthEngine.coinsForSteps(stepsToday)
+        val givenCoins = if (repository.stepCoinDate() == today) repository.stepCoinToday() else 0
         var pet = _ui.value.pet
+        var petChanged = false
         if (earnedXp > givenXp) {
             // 静默累计，不弹提示，避免走路时每 30 秒刷一次 Snackbar；升级提示由 addXp 负责
             pet = addXp(pet, earnedXp - givenXp)
             repository.setStepXp(today, earnedXp)
-            repository.savePet(pet)
+            petChanged = true
         }
+        if (earnedCoins > givenCoins) {
+            pet = GrowthEngine.addCoins(pet, earnedCoins - givenCoins)
+            repository.setStepCoin(today, earnedCoins)
+            petChanged = true
+        }
+        if (petChanged) repository.savePet(pet)
         _ui.update { it.copy(pet = pet, todaySteps = stepsToday, todayStepXp = earnedXp, stepsSupported = true) }
         refreshQuests()
         refreshAchievements()
@@ -225,29 +248,36 @@ class PetViewModel(
 
     // ---- 喂食 ----
 
-    fun feed() {
+    /** 主页免费喂普通粮；商店购买高级猫粮走同一条结算路径 */
+    fun feed() = feedWith(ShopCatalog.NORMAL_FOOD)
+
+    private fun feedWith(item: ShopItem) {
         val today = todayString()
-        var used = if (repository.feedDate() == today) repository.feedCount() else 0
+        val used = if (repository.feedDate() == today) repository.feedCount() else 0
         if (used >= GrowthEngine.MAX_FEEDS_PER_DAY) {
             notify("今天已经喂过 ${GrowthEngine.MAX_FEEDS_PER_DAY} 次啦，明天再来吧")
             return
         }
-        used++
-        repository.setFeed(today, used)
-        repository.incrementLifetimeFeeds()
-        val now = nowEpochMs()
-        val pet = _ui.value.pet.copy(
-            hunger = (_ui.value.pet.hunger + GrowthEngine.FEED_HUNGER_RESTORE).coerceAtMost(100),
-            lastUpdatedEpochMs = now,
+        if (!GrowthEngine.canPurchase(_ui.value.pet, item)) {
+            notify("金币不足，还差 ${item.price - _ui.value.pet.coins} 金币")
+            return
+        }
+        val purchased = GrowthEngine.purchase(_ui.value.pet, item) ?: return
+        val hunger = GrowthEngine.feedHunger(purchased.hunger, item)
+        var pet = purchased.copy(
+            hunger = hunger,
+            lastUpdatedEpochMs = nowEpochMs(),
             mood = GrowthEngine.resolveMood(
-                (_ui.value.pet.hunger + GrowthEngine.FEED_HUNGER_RESTORE).coerceAtMost(100),
-                _ui.value.pet.energy, _ui.value.weather?.weatherCode, _ui.value.lastSleepHours
+                hunger, purchased.energy, _ui.value.weather?.weatherCode, _ui.value.lastSleepHours
             ),
         )
+        pet = GrowthEngine.addCoins(pet, GrowthEngine.FEED_COIN_REWARD)
+        repository.setFeed(today, used + 1)
+        repository.incrementLifetimeFeeds()
         repository.savePet(pet)
-        _ui.update { it.copy(pet = pet, feedsUsedToday = used) }
+        _ui.update { it.copy(pet = pet, feedsUsedToday = used + 1) }
         refreshQuests()
-        notify("${_ui.value.pet.name}吃得很开心！饱食度 +${GrowthEngine.FEED_HUNGER_RESTORE}")
+        notify("${pet.name}吃了${item.title}！饱食度 +${item.hungerRestore}，金币 +${GrowthEngine.FEED_COIN_REWARD}")
         refreshAchievements()
     }
 
@@ -316,12 +346,21 @@ class PetViewModel(
 
             val today = todayString()
             var chatXp = if (repository.chatXpDate() == today) repository.chatXpToday() else 0
+            var petChanged = false
             if (chatXp < GrowthEngine.MAX_CHAT_XP_PER_DAY) {
                 pet = addXp(pet, GrowthEngine.CHAT_XP_PER_MESSAGE)
                 chatXp = (chatXp + GrowthEngine.CHAT_XP_PER_MESSAGE).coerceAtMost(GrowthEngine.MAX_CHAT_XP_PER_DAY)
                 repository.setChatXp(today, chatXp)
-                repository.savePet(pet)
+                petChanged = true
             }
+            val chatCoins = if (repository.chatCoinDate() == today) repository.chatCoinToday() else 0
+            val coin = GrowthEngine.coinsForChat(chatCoins)
+            if (coin > 0) {
+                pet = GrowthEngine.addCoins(pet, coin)
+                repository.setChatCoin(today, chatCoins + coin)
+                petChanged = true
+            }
+            if (petChanged) repository.savePet(pet)
             // 每日消息条数独立计数（XP 封顶后仍要继续累计，供聊天任务进度使用）
             val chatMsgs = if (repository.chatMsgDate() == today) repository.chatMsgCount() else 0
             repository.setChatMsg(today, chatMsgs + 1)
@@ -392,7 +431,9 @@ class PetViewModel(
         val levelBefore = pet.level
         val updated = GrowthEngine.addXp(pet, amount)
         if (updated.level > levelBefore) {
-            notify("🎉 升级啦！${pet.name} 现在是 Lv.${updated.level}")
+            val gifts = levelGiftAccessories(updated.level) - levelGiftAccessories(levelBefore)
+            val giftText = if (gifts.isEmpty()) "" else "，解锁装扮：" + gifts.joinToString("、") { it.title }
+            notify("🎉 升级啦！${pet.name} 现在是 Lv.${updated.level}$giftText")
         }
         return updated
     }
@@ -424,11 +465,13 @@ class PetViewModel(
         val claimable = _ui.value.dailyQuests.filter { it.completed && !it.claimed }
         if (claimable.isEmpty()) return
         val xp = claimable.sumOf { it.quest.xpReward }
+        val coins = claimable.sumOf { it.quest.coinReward }
         repository.addClaimedQuestIds(today, claimable.map { it.quest.id }.toSet())
-        val pet = addXp(_ui.value.pet, xp)
+        var pet = addXp(_ui.value.pet, xp)
+        pet = GrowthEngine.addCoins(pet, coins)
         repository.savePet(pet)
         _ui.update { it.copy(pet = pet, dailyQuests = buildQuests(today)) }
-        notify("任务完成！经验 +$xp")
+        notify("任务完成！经验 +$xp，金币 +$coins")
         refreshAchievements()
     }
 
@@ -452,6 +495,78 @@ class PetViewModel(
                 else -> "这局没接到小鱼干，再试试吧"
             }
         )
+        refreshAchievements()
+    }
+
+    // ---- 商店 ----
+
+    /** 食品购买后立即喂食；玩具一次性扣金币；配饰写入已购集合并自动装备到对应槽位 */
+    fun buyShopItem(item: ShopItem) {
+        if (item.category == ShopCategory.FOOD) {
+            feedWith(item)
+            return
+        }
+        if (item.id in _ui.value.pet.ownedItemIds) {
+            notify("已经拥有「${item.title}」啦")
+            return
+        }
+        val purchased = GrowthEngine.purchase(_ui.value.pet, item)
+        if (purchased == null) {
+            notify("金币不足，还差 ${item.price - _ui.value.pet.coins} 金币")
+            return
+        }
+        val accessory = AccessoryCatalog.byId[item.id]
+        val pet = accessory?.let { purchased.withEquipped(it.slot, it.id) } ?: purchased
+        repository.savePet(pet)
+        _ui.update { it.copy(pet = pet) }
+        notify(
+            when {
+                accessory != null -> "买下「${item.title}」，已装备到${accessory.slot.label}槽位"
+                else -> "买下「${item.title}」！"
+            }
+        )
+    }
+
+    // ---- 装扮 ----
+
+    /** 装备配饰：只校验解锁状态与目标槽位，装备记录随 PetState 持久化 */
+    fun equipAccessory(accessoryId: String) {
+        val accessory = AccessoryCatalog.byId[accessoryId] ?: return
+        if (!isAccessoryUnlocked(accessory, _ui.value.pet, repository.unlockedAchievements())) {
+            notify("「${accessory.title}」还没解锁：${accessory.unlockHint}")
+            return
+        }
+        if (_ui.value.pet.equippedId(accessory.slot) == accessory.id) return
+        val pet = _ui.value.pet.withEquipped(accessory.slot, accessory.id)
+        repository.savePet(pet)
+        _ui.update { it.copy(pet = pet) }
+        notify("已换上「${accessory.title}」")
+    }
+
+    fun clearAccessorySlot(slot: AccessorySlot) {
+        if (_ui.value.pet.equippedId(slot).isEmpty()) return
+        val pet = _ui.value.pet.withEquipped(slot, "")
+        repository.savePet(pet)
+        _ui.update { it.copy(pet = pet) }
+        notify("已取下${slot.label}")
+    }
+
+    /** 毛线球陪玩：每日一次，给固定 XP */
+    fun playWithToy() {
+        if (ShopCatalog.YARN_BALL.id !in _ui.value.pet.ownedItemIds) {
+            notify("先去商店买一个毛线球吧")
+            return
+        }
+        val today = todayString()
+        if (repository.toyPlayDate() == today) {
+            notify("今天已经玩过毛线球啦，明天再来")
+            return
+        }
+        repository.setToyPlayDate(today)
+        val pet = addXp(_ui.value.pet, GrowthEngine.TOY_PLAY_XP)
+        repository.savePet(pet)
+        _ui.update { it.copy(pet = pet, toyPlayedToday = true) }
+        notify("毛线球真好玩！经验 +${GrowthEngine.TOY_PLAY_XP}")
         refreshAchievements()
     }
 
@@ -486,7 +601,9 @@ class PetViewModel(
             )
         }
         if (newlyUnlocked.isNotEmpty()) {
-            notify("🏆 解锁成就：" + newlyUnlocked.joinToString("、") { it.title })
+            val accessoryTitles = achievementRewardAccessories(newlyUnlocked.toSet()).map { it.title }
+            val giftText = if (accessoryTitles.isEmpty()) "" else "，解锁装扮：" + accessoryTitles.joinToString("、")
+            notify("🏆 解锁成就：" + newlyUnlocked.joinToString("、") { it.title } + giftText)
         }
     }
 

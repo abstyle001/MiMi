@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,13 +21,17 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Checkroom
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.Toys
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
@@ -56,13 +61,19 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import org.example.project.pet.AccessorySlot
 import org.example.project.pet.DailyQuestState
 import org.example.project.pet.GrowthEngine
 import org.example.project.pet.MAX_PET_NAME_LENGTH
 import org.example.project.pet.QuestType
+import org.example.project.pet.ShopCatalog
+import org.example.project.pet.ShopItem
+import org.example.project.pet.equippedAccessoryIds
 import org.example.project.pet.level
 import org.example.project.pet.sanitizePetName
+import org.example.project.pet.stageBackgroundId
 import org.example.project.pet.xpIntoCurrentLevel
+import org.example.project.ui.cat.AccessoryBackground
 import org.example.project.ui.cat.CatPet
 
 @Composable
@@ -75,14 +86,43 @@ fun PetHomeScreen(
     onRename: (String) -> Unit,
     onClaimQuests: () -> Unit,
     onGameFinished: (Int) -> Unit,
+    onBuyItem: (ShopItem) -> Unit,
+    onPlayWithToy: () -> Unit,
+    onEquipAccessory: (String) -> Unit,
+    onClearAccessory: (AccessorySlot) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showGame by rememberSaveable { mutableStateOf(false) }
+    var showShop by rememberSaveable { mutableStateOf(false) }
+    var showWardrobe by rememberSaveable { mutableStateOf(false) }
+    if (showShop) {
+        ShopScreen(
+            state = state,
+            onBuy = onBuyItem,
+            onExit = { showShop = false },
+            modifier = modifier,
+        )
+        return
+    }
     if (showGame) {
         FishGameScreen(
             gameXpToday = state.gameXpToday,
             onFinish = onGameFinished,
             onExit = { showGame = false },
+            modifier = modifier,
+        )
+        return
+    }
+    if (showWardrobe) {
+        WardrobeScreen(
+            state = state,
+            onEquip = onEquipAccessory,
+            onClearSlot = onClearAccessory,
+            onOpenShop = {
+                showWardrobe = false
+                showShop = true
+            },
+            onExit = { showWardrobe = false },
             modifier = modifier,
         )
         return
@@ -96,21 +136,29 @@ fun PetHomeScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // 宠物舞台
+        // 宠物舞台：背景配饰铺满整张卡片，猫咪立在背景之上
         Card(Modifier.fillMaxWidth()) {
-            Box(
-                Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                CatPet(
-                    mood = state.pet.mood,
-                    onTap = onPetTap,
-                    modifier = Modifier.size(210.dp),
-                )
+            Box(Modifier.fillMaxWidth()) {
+                val stageBackground = state.pet.stageBackgroundId
+                stageBackground?.let {
+                    AccessoryBackground(it, Modifier.matchParentSize())
+                }
+                Box(
+                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CatPet(
+                        mood = state.pet.mood,
+                        onTap = onPetTap,
+                        accessories = state.pet.equippedAccessoryIds,
+                        modifier = Modifier.size(210.dp),
+                        drawBackground = false,
+                    )
+                }
             }
         }
 
-        // 名字 + 等级 + 心情
+        // 名字 + 等级
         var showRenameDialog by remember { mutableStateOf(false) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -132,7 +180,23 @@ fun PetHomeScreen(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) { Text("Lv.${state.pet.level}") }
-            Spacer(Modifier.width(8.dp))
+        }
+        // 金币 + 心情
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SuggestionChip(
+                onClick = { showShop = true },
+                label = { Text("${state.pet.coins} 金币") },
+                icon = {
+                    Icon(
+                        Icons.Filled.MonetizationOn,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                },
+            )
             SuggestionChip(onClick = {}, label = { Text(state.pet.mood.label) })
         }
         if (showRenameDialog) {
@@ -201,19 +265,59 @@ fun PetHomeScreen(
             }
         }
 
-        // 喂食
+        // 喂食 / 商店
         val feedsLeft = (GrowthEngine.MAX_FEEDS_PER_DAY - state.feedsUsedToday).coerceAtLeast(0)
-        FilledTonalButton(onClick = onFeed, enabled = feedsLeft > 0) {
-            Icon(Icons.Filled.Restaurant, null, Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
-            Text("喂食（今日剩余 $feedsLeft 次）")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilledTonalButton(
+                onClick = onFeed,
+                enabled = feedsLeft > 0,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(Icons.Filled.Restaurant, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("喂食（$feedsLeft）")
+            }
+            OutlinedButton(onClick = { showShop = true }, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Filled.Storefront, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("商店")
+            }
         }
 
-        // 迷你游戏
-        OutlinedButton(onClick = { showGame = true }) {
-            Icon(Icons.Filled.SportsEsports, null, Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
-            Text("玩游戏 · 接小鱼干")
+        // 迷你游戏 / 装扮
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = { showGame = true },
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+            ) {
+                Icon(Icons.Filled.SportsEsports, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("小游戏")
+            }
+            OutlinedButton(
+                onClick = { showWardrobe = true },
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+            ) {
+                Icon(Icons.Filled.Checkroom, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("装扮")
+            }
+        }
+        if (ShopCatalog.YARN_BALL.id in state.pet.ownedItemIds) {
+            OutlinedButton(
+                onClick = onPlayWithToy,
+                enabled = !state.toyPlayedToday,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Filled.Toys, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    if (state.toyPlayedToday) "今天已经玩过毛线球了"
+                    else "玩毛线球（+${GrowthEngine.TOY_PLAY_XP} XP）"
+                )
+            }
         }
 
         // 每日任务
@@ -232,8 +336,10 @@ private fun DailyQuestsCard(quests: List<DailyQuestState>, onClaim: () -> Unit) 
                 QuestRow(qs)
             }
             if (claimable.isNotEmpty()) {
+                val claimXp = claimable.sumOf { it.quest.xpReward }
+                val claimCoins = claimable.sumOf { it.quest.coinReward }
                 FilledTonalButton(onClick = onClaim) {
-                    Text("领取奖励（+${claimable.sumOf { it.quest.xpReward }} XP）")
+                    Text("领取 +$claimXp XP · +$claimCoins 币")
                 }
             }
         }

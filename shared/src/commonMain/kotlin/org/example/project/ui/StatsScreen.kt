@@ -130,6 +130,7 @@ private fun TodayStatsCard(state: PetUiState) {
             Text("聊天互动：+${state.chatXpToday} XP")
             Text("游戏互动：+${state.gameXpToday} XP")
             Text("喂食：${state.feedsUsedToday} 次 · 抚摸：${state.pettingsUsedToday} 次")
+            Text("金币：${state.pet.coins}（走路 / 喂食 / 聊天 / 任务获得）")
         }
     }
 }

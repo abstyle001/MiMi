@@ -6,6 +6,7 @@ import kotlinx.serialization.json.Json
 import org.example.project.chat.ChatMessage
 import org.example.project.chat.LlmConfig
 import org.example.project.pet.PetState
+import org.example.project.pet.migrateEquippedAccessories
 
 class PetRepository(private val settings: Settings) {
 
@@ -16,6 +17,7 @@ class PetRepository(private val settings: Settings) {
     fun loadPet(): PetState =
         settings.getStringOrNull(KEY_PET)
             ?.let { runCatching { json.decodeFromString<PetState>(it) }.getOrNull() }
+            ?.let { migrateEquippedAccessories(it) }
             ?: PetState()
 
     fun savePet(pet: PetState) {
@@ -82,6 +84,27 @@ class PetRepository(private val settings: Settings) {
         settings.putString(KEY_GAME_XP_DATE, date)
         settings.putInt(KEY_GAME_XP_TODAY, xp)
     }
+
+    // ---- 金币 ----
+    // 金币余额存在 PetState.coins；这里只记录按日结算的步数/聊天产出，避免重复发放
+
+    fun stepCoinDate(): String = settings.getString(KEY_STEP_COIN_DATE, "")
+    fun stepCoinToday(): Int = settings.getInt(KEY_STEP_COIN_TODAY, 0)
+    fun setStepCoin(date: String, coins: Int) {
+        settings.putString(KEY_STEP_COIN_DATE, date)
+        settings.putInt(KEY_STEP_COIN_TODAY, coins)
+    }
+
+    fun chatCoinDate(): String = settings.getString(KEY_CHAT_COIN_DATE, "")
+    fun chatCoinToday(): Int = settings.getInt(KEY_CHAT_COIN_TODAY, 0)
+    fun setChatCoin(date: String, coins: Int) {
+        settings.putString(KEY_CHAT_COIN_DATE, date)
+        settings.putInt(KEY_CHAT_COIN_TODAY, coins)
+    }
+
+    /** 毛线球陪玩每日一次，记录日期即可 */
+    fun toyPlayDate(): String = settings.getString(KEY_TOY_PLAY_DATE, "")
+    fun setToyPlayDate(date: String) = settings.putString(KEY_TOY_PLAY_DATE, date)
 
     // ---- 每日聊天消息条数（任务进度用，与 chatXp 上限解耦） ----
 
@@ -219,6 +242,11 @@ class PetRepository(private val settings: Settings) {
         const val KEY_CHAT_MSG_COUNT = "chat_msg_count"
         const val KEY_GAME_XP_DATE = "game_xp_date"
         const val KEY_GAME_XP_TODAY = "game_xp_today"
+        const val KEY_STEP_COIN_DATE = "step_coin_date"
+        const val KEY_STEP_COIN_TODAY = "step_coin_today"
+        const val KEY_CHAT_COIN_DATE = "chat_coin_date"
+        const val KEY_CHAT_COIN_TODAY = "chat_coin_today"
+        const val KEY_TOY_PLAY_DATE = "toy_play_date"
         const val KEY_QUEST_DATE = "quest_date"
         const val KEY_CLAIMED_QUEST_IDS = "claimed_quest_ids"
         const val KEY_SLEEP_SETTLED_DATE = "sleep_settled_date"
