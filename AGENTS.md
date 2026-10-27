@@ -11,10 +11,11 @@ Kotlin Multiplatform 跨端「手机宠物」App（宠物名：小咪）。Andro
 - `data/PetRepository.kt`：multiplatform-settings KV 持久化。**按日计数（喂食/抚摸/聊天 XP/步数金币/聊天金币）统一用「date + count」双 key 模式**（参照 `feedDate/feedCount`）。
 - `data/PlatformServices.kt`：`expect fun createSettings()` / `expect fun createStepDataSource()`，各平台 actual 在同名后缀文件里。
 - `chat/LlmChatService.kt`：OpenAI 兼容协议。**降级契约不能破坏**：任何失败（无 Key/断网/空响应）都要返回 `ChatReply(fromLlm = false)`，UI 靠它显示「AI 回复/离线回复」标签。
-- `ui/cat/CatPet.kt`：精灵图（`composeResources/drawable/cat_*`）+ 程序化呼吸/跳跃/粒子动效。配饰通过 `accessories: Set<String>`（已装备 id）叠加绘制，背景画在猫身后，默认空集合，老调用方不必改。
+- `ui/cat/CatPet.kt`：精灵图（`composeResources/drawable/cat_*`）+ 程序化呼吸/跳跃/粒子动效。配饰通过 `accessories: Set<String>`（已装备 id）叠加绘制，背景画在猫身后，默认空集合，老调用方不必改。`level` 决定成长阶段，只影响精灵图缩放与毛色矩阵，配饰和阴影跟随同一形变。
 - 背景配饰分两层：主页 / 装扮页的舞台用 `AccessoryBackground(id, Modifier.matchParentSize())` 铺满整张 Card（圆角由 Card 裁切），同时给 `CatPet` 传 `drawBackground = false`；只有独立渲染（预览图、单猫组件）才让 `CatPet` 自己画背景。不要让背景只铺在 210dp 精灵图方框里，否则会出现「框中框」。
 - `pet/Accessory.kt`：装扮目录与规则（槽位、解锁途径、装备读写、旧存档迁移），全部纯函数，配 `commonTest`。
 - `pet/Shop.kt` + `ui/ShopScreen.kt`：商店商品目录与界面。食物购买后立即喂食，玩具/配饰一次性永久解锁；商品 `id` 是持久化键，改名会导致老用户已购记录失效。
+- `pet/GrowthStage.kt`：成长阶段规则（幼猫 / 青年猫 / 成年猫）。**阶段由 `PetState.xp` 派生，不单独持久化**；`CatPet(level = pet.level)` 消费。
 
 ## 金币与商店
 
@@ -33,6 +34,16 @@ Kotlin Multiplatform 跨端「手机宠物」App（宠物名：小咪）。Andro
 - 新配饰三步：① 在 `AccessoryCatalog` 加条目（id 是持久化键，别改名）；② 商店出售的话在 `ShopCatalog` 加同 id、同价格商品；③ 在 `CatPet.drawAccessory`（帽子/项圈）或 `drawAccessoryBackground`（背景）加绘制分支。改完补 `AccessoryTest` 与 `CatPreviewRender.renderAccessoryShowcase`，跑渲染目检对位。
 - 购买配饰后 `PetViewModel.buyShopItem` 自动装备；升级 / 成就解锁的配饰只在 Snackbar 提示，是否穿戴由用户在 `ui/WardrobeScreen.kt` 决定。
 
+## 成长阶段 / 外观进化
+
+- 路线选择：**单宠物外观进化**，不做多宠物并存（TODO 中复杂度更低的一档）。等级阈值：幼猫 Lv.1-4 → 青年猫 Lv.5-9 → 成年猫 Lv.10+。
+- `pet/GrowthStage.kt` 是唯一阶段规则：`growthStageForLevel / growthStageForXp`、`PetState.growthStage`、`GrowthStage.next`、`levelsToNextStage`、`stageProgress`、`levelRangeLabel`，全部纯函数，配 `GrowthStageTest`。
+- 阶段只由 xp 派生，**不要往 `PetState` 加阶段字段或额外 KV**；改等级曲线时阶段会自然跟着变。
+- `CatPet(level = ...)` 按阶段切换：体型缩放（0.82 / 0.92 / 1.0，跨阶段用 spring 动画过渡）、毛色饱和度矩阵、阴影大小。配饰 Canvas 复用同一个 `imageModifier`，不要给阶段单独加配饰坐标偏移。
+- 界面：主页名字下方显示「阶段 · 再升 N 级进化为 X」；`StatsScreen` 的 `GrowthStageCard` 展示阶段时间线 + 进度条；`PetViewModel.addXp` 跨越阶段时在升级 Snackbar 里带出「长成了青年猫」。
+- 聊天人设：`PetPersona.stage` 会传给 LLM system prompt 和离线回复，语气随阶段变化。
+- 新增阶段三步：① 在 `GrowthStage` 枚举加条目（保持 minLevel 递增）；② 在 `CatPet` 的 `bodyScale / furFilter` 加分支；③ 补 `GrowthStageTest` 与 `CatPreviewRender.renderGrowthStages`，跑渲染目检体型和毛色。
+
 ## 常用命令（Windows + Git Bash）
 
 ```bash
@@ -41,7 +52,7 @@ Kotlin Multiplatform 跨端「手机宠物」App（宠物名：小咪）。Andro
 ./gradlew :shared:jvmTest                 # 跑单测（最快）
 ./gradlew :shared:testAndroidHostTest     # Android 宿主单测（注意：不叫 testDebugUnitTest）
 ./gradlew :desktopApp:run                 # 桌面预览（功能完整，无步数）
-./gradlew :shared:jvmTest --tests "*CatPreviewRender*"  # 渲染猫咪/配饰/聊天/商店/主页/装扮 PNG 到 shared/build/catpreviews/
+./gradlew :shared:jvmTest --tests "*CatPreviewRender*"  # 渲染猫咪/配饰/成长阶段/聊天/商店/主页/装扮 PNG 到 shared/build/catpreviews/
 ```
 
 改完代码的最低验证：`:shared:jvmTest` + `:androidApp:assembleDebug` + `:shared:compileKotlinJs :shared:compileKotlinWasmJs`（后两个用来兜住 expect/actual 完整性）。

@@ -69,7 +69,10 @@ import org.example.project.pet.QuestType
 import org.example.project.pet.ShopCatalog
 import org.example.project.pet.ShopItem
 import org.example.project.pet.equippedAccessoryIds
+import org.example.project.pet.growthStage
 import org.example.project.pet.level
+import org.example.project.pet.levelsToNextStage
+import org.example.project.pet.nextGrowthStage
 import org.example.project.pet.sanitizePetName
 import org.example.project.pet.stageBackgroundId
 import org.example.project.pet.xpIntoCurrentLevel
@@ -151,6 +154,7 @@ fun PetHomeScreen(
                         mood = state.pet.mood,
                         onTap = onPetTap,
                         accessories = state.pet.equippedAccessoryIds,
+                        level = state.pet.level,
                         modifier = Modifier.size(210.dp),
                         drawBackground = false,
                     )
@@ -181,6 +185,18 @@ fun PetHomeScreen(
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) { Text("Lv.${state.pet.level}") }
         }
+        val growthStage = state.pet.growthStage
+        val nextStage = state.pet.nextGrowthStage
+        val levelsToEvolve = levelsToNextStage(state.pet.level)
+        Text(
+            if (nextStage != null && levelsToEvolve != null) {
+                "${growthStage.label} · 再升 $levelsToEvolve 级进化为${nextStage.label}"
+            } else {
+                "${growthStage.label} · 已经完全长大啦"
+            },
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         // 金币 + 心情
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),

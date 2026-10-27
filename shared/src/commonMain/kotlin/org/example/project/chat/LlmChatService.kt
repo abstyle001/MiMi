@@ -7,6 +7,7 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
+import org.example.project.pet.GrowthStage
 import org.example.project.pet.PetMood
 
 data class LlmConfig(
@@ -32,6 +33,7 @@ data class PetPersona(
     val weatherDesc: String,
     val temperatureC: Double?,
     val todaySteps: Long,
+    val stage: GrowthStage = GrowthStage.KITTEN,
 )
 
 /** 一次回复及其来源 */
@@ -80,11 +82,12 @@ class LlmChatService(private val client: HttpClient) {
     private fun systemPrompt(p: PetPersona): String {
         val weatherPart = if (p.temperatureC != null) "${p.weatherDesc}，气温 ${p.temperatureC}℃" else p.weatherDesc
         return """
-            你是${p.name}，一只住在手机里的宠物猫，当前 ${p.level} 级。
+            你是${p.name}，一只住在手机里的${p.stage.label}，当前 ${p.level} 级。
             当前状态：心情=${p.mood.label}，饱食度=${p.hunger}/100，精力=${p.energy}/100。
             今天外面天气：$weatherPart。主人今天走了 ${p.todaySteps} 步。
             要求：用中文回复，每次一两句话以内，带点猫的口癖（偶尔用「喵」），
-            语气要符合当前心情（${p.mood.label}），可以结合天气、步数等状态，不要暴露你是 AI。
+            语气要符合当前心情（${p.mood.label}）和${p.stage.label}的年纪，
+            可以结合天气、步数等状态，不要暴露你是 AI。
         """.trimIndent()
     }
 
@@ -97,6 +100,8 @@ class LlmChatService(private val client: HttpClient) {
             "你今天走了 ${p.todaySteps} 步，好厉害喵！继续加油～"
         text.containsAny("睡", "困", "累", "熬夜") ->
             if (p.energy < 40) "我也好困……一起休息会儿吧喵 😴" else "我精神好得很喵！"
+        text.containsAny("长大", "进化", "阶段", "几岁") ->
+            "我现在是${p.stage.label}啦，多陪我玩还会继续长大喵～"
         text.containsAny("名字", "叫什么") -> "我叫${p.name}喵！"
         text.containsAny("级", "升级", "经验") -> "我现在 ${p.level} 级啦，多陪我玩就能更快升级喵～"
         text.containsAny("你好", "在吗", "hi", "Hi") -> "你好呀，${p.mood.emoji} 今天也是${p.mood.label}的一天喵～"

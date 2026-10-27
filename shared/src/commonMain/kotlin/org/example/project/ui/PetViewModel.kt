@@ -37,6 +37,7 @@ import org.example.project.pet.achievementProgress
 import org.example.project.pet.achievementRewardAccessories
 import org.example.project.pet.checkAchievements
 import org.example.project.pet.equippedId
+import org.example.project.pet.growthStage
 import org.example.project.pet.isAccessoryUnlocked
 import org.example.project.pet.level
 import org.example.project.pet.levelGiftAccessories
@@ -378,6 +379,7 @@ class PetViewModel(
             val persona = PetPersona(
                 name = pet.name,
                 level = pet.level,
+                stage = pet.growthStage,
                 mood = pet.mood,
                 hunger = pet.hunger,
                 energy = pet.energy,
@@ -429,11 +431,17 @@ class PetViewModel(
     private fun addXp(pet: PetState, amount: Int): PetState {
         if (amount <= 0) return pet
         val levelBefore = pet.level
+        val stageBefore = pet.growthStage
         val updated = GrowthEngine.addXp(pet, amount)
         if (updated.level > levelBefore) {
             val gifts = levelGiftAccessories(updated.level) - levelGiftAccessories(levelBefore)
             val giftText = if (gifts.isEmpty()) "" else "，解锁装扮：" + gifts.joinToString("、") { it.title }
-            notify("🎉 升级啦！${pet.name} 现在是 Lv.${updated.level}$giftText")
+            val evolveText = if (updated.growthStage != stageBefore) {
+                "，长成了${updated.growthStage.label}"
+            } else {
+                ""
+            }
+            notify("🎉 升级啦！${pet.name} 现在是 Lv.${updated.level}$evolveText$giftText")
         }
         return updated
     }

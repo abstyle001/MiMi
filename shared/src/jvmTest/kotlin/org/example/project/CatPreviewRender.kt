@@ -12,6 +12,7 @@ import org.example.project.pet.Achievement
 import org.example.project.pet.AchievementState
 import org.example.project.pet.DailyQuestState
 import org.example.project.pet.GrowthEngine
+import org.example.project.pet.GrowthStage
 import org.example.project.pet.PetMood
 import org.example.project.pet.PetState
 import org.example.project.pet.QuestActivity
@@ -36,10 +37,28 @@ class CatPreviewRender {
         PetMood.entries.forEach { mood ->
             val scene = ImageComposeScene(width = 480, height = 480, density = Density(2f))
             try {
-                scene.setContent { CatPet(mood = mood, onTap = {}) }
+                scene.setContent { CatPet(mood = mood, onTap = {}, level = 10) }
                 val pngBytes = scene.render().encodeToData()?.bytes
                     ?: error("渲染 $mood 失败")
                 File(dir, "${mood.name}.png").writeBytes(pngBytes)
+            } finally {
+                scene.close()
+            }
+        }
+    }
+
+    @Test
+    fun renderGrowthStages() {
+        val dir = File("build/catpreviews").apply { mkdirs() }
+        GrowthStage.entries.forEach { stage ->
+            val scene = ImageComposeScene(width = 480, height = 480, density = Density(2f))
+            try {
+                scene.setContent {
+                    CatPet(mood = PetMood.HAPPY, onTap = {}, level = stage.minLevel)
+                }
+                val pngBytes = scene.render().encodeToData()?.bytes
+                    ?: error("渲染成长阶段 ${stage.id} 失败")
+                File(dir, "growth_${stage.id}.png").writeBytes(pngBytes)
             } finally {
                 scene.close()
             }
@@ -84,7 +103,7 @@ class CatPreviewRender {
                 unlocked = unlocked,
             )
         }
-        val scene = ImageComposeScene(width = 560, height = 2400, density = Density(2f))
+        val scene = ImageComposeScene(width = 560, height = 2700, density = Density(2f))
         try {
             scene.setContent {
                 AppTheme {
@@ -153,6 +172,7 @@ class CatPreviewRender {
                     mood = PetMood.HAPPY,
                     onTap = {},
                     accessories = setOf(ShopCatalog.RED_BOW.id),
+                    level = 10,
                 )
             }
             val pngBytes = scene.render().encodeToData()?.bytes ?: error("渲染配饰失败")
@@ -174,6 +194,7 @@ class CatPreviewRender {
                         mood = PetMood.HAPPY,
                         onTap = {},
                         accessories = setOf(accessory.id),
+                        level = 10,
                     )
                 }
                 val pngBytes = scene.render().encodeToData()?.bytes
@@ -200,6 +221,7 @@ class CatPreviewRender {
                         AccessoryCatalog.STAR_SCARF.id,
                         AccessoryCatalog.BG_SAKURA.id,
                     ),
+                    level = 10,
                 )
             }
             val pngBytes = scene.render().encodeToData()?.bytes ?: error("渲染整体装扮失败")
@@ -284,7 +306,7 @@ class CatPreviewRender {
         val quests = GrowthEngine.selectDailyQuests("2026-10-27").map { quest ->
             DailyQuestState(quest, GrowthEngine.questProgress(quest, QuestActivity(steps = 3200)), false)
         }
-        val scene = ImageComposeScene(width = 560, height = 1900, density = Density(2f))
+        val scene = ImageComposeScene(width = 560, height = 2000, density = Density(2f))
         try {
             scene.setContent {
                 AppTheme {

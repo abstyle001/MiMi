@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
@@ -36,6 +37,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -49,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -58,6 +61,13 @@ import org.example.project.chat.LlmConfig
 import org.example.project.data.CityPreset
 import org.example.project.pet.Achievement
 import org.example.project.pet.AchievementState
+import org.example.project.pet.GrowthStage
+import org.example.project.pet.growthStage
+import org.example.project.pet.level
+import org.example.project.pet.levelRangeLabel
+import org.example.project.pet.levelsToNextStage
+import org.example.project.pet.nextGrowthStage
+import org.example.project.pet.stageProgress
 import kotlin.math.roundToInt
 
 @Composable
@@ -76,6 +86,7 @@ fun StatsScreen(
     ) {
         SleepCard(state, onCheckInSleep)
         TodayStatsCard(state)
+        GrowthStageCard(state)
         AchievementCard(state.achievements)
         LlmSettingsCard(state, onSaveSettings)
     }
@@ -132,6 +143,111 @@ private fun TodayStatsCard(state: PetUiState) {
             Text("喂食：${state.feedsUsedToday} 次 · 抚摸：${state.pettingsUsedToday} 次")
             Text("金币：${state.pet.coins}（走路 / 喂食 / 聊天 / 任务获得）")
         }
+    }
+}
+
+@Composable
+private fun GrowthStageCard(state: PetUiState) {
+    val level = state.pet.level
+    val current = state.pet.growthStage
+    val next = state.pet.nextGrowthStage
+    val remaining = levelsToNextStage(level)
+    val progress = stageProgress(level)
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionHeader(Icons.Filled.Pets, "成长阶段")
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "Lv.$level",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GrowthStage.entries.forEach { stage ->
+                    GrowthStagePill(
+                        stage = stage,
+                        active = stage == current,
+                        reached = level >= stage.minLevel,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Text(
+                current.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (next != null && remaining != null) {
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "再升 $remaining 级进化为${next.label}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "${(progress * 100).toInt()}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    strokeCap = StrokeCap.Round,
+                    drawStopIndicator = {},
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GrowthStagePill(
+    stage: GrowthStage,
+    active: Boolean,
+    reached: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val container = when {
+        active -> MaterialTheme.colorScheme.primaryContainer
+        reached -> MaterialTheme.colorScheme.secondaryContainer
+        else -> MaterialTheme.colorScheme.surfaceContainerHighest
+    }
+    val content = when {
+        active -> MaterialTheme.colorScheme.onPrimaryContainer
+        reached -> MaterialTheme.colorScheme.onSecondaryContainer
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(container)
+            .padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            stage.label,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+            color = content,
+        )
+        Text(
+            stage.levelRangeLabel,
+            style = MaterialTheme.typography.labelSmall,
+            color = content,
+        )
     }
 }
 

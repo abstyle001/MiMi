@@ -8,6 +8,7 @@ import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
@@ -37,6 +38,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -64,7 +67,9 @@ import kotlin.math.sin
 import kotlin.random.Random
 import org.example.project.pet.AccessoryCatalog
 import org.example.project.pet.AccessorySlot
+import org.example.project.pet.GrowthStage
 import org.example.project.pet.PetMood
+import org.example.project.pet.growthStageForLevel
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.getDrawableResourceBytes
@@ -97,6 +102,9 @@ private fun imageForKey(key: String): DrawableResource =
  * [accessories] 传已装备的配饰 id 集合（帽子 / 项圈 / 背景各取一件），
  * 会跟随精灵图一起做呼吸/跳动的变换；背景绘制在猫咪身后。
  *
+ * [level] 决定成长阶段（幼猫 → 青年猫 → 成年猫），只影响体型与毛色，
+ * 配饰复用同一套 graphicsLayer 形变，不需要单独调整坐标。
+ *
  * [drawBackground] 为 false 时不再画背景，由调用方用 [AccessoryBackground] 铺满整个舞台，
  * 避免背景被精灵图方框裁成「框中框」。
  */
@@ -105,9 +113,30 @@ fun CatPet(
     mood: PetMood,
     onTap: () -> Unit,
     accessories: Set<String> = emptySet(),
+    level: Int = 1,
     modifier: Modifier = Modifier,
     drawBackground: Boolean = true,
 ) {
+    val growthStage = growthStageForLevel(level)
+    val bodyScale = when (growthStage) {
+        GrowthStage.KITTEN -> 0.82f
+        GrowthStage.YOUNG -> 0.92f
+        GrowthStage.ADULT -> 1f
+    }
+    // 跨阶段时弹性长大，避免体型瞬间跳变；首次组合直接使用目标值
+    val animatedBodyScale by animateFloatAsState(
+        targetValue = bodyScale,
+        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow),
+        label = "growthScale",
+    )
+    val furFilter = remember(growthStage) {
+        when (growthStage) {
+            // 幼猫偏柔和的浅色，成年后毛色更饱和
+            GrowthStage.KITTEN -> ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0.88f) })
+            GrowthStage.YOUNG -> null
+            GrowthStage.ADULT -> ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(1.12f) })
+        }
+    }
     val wornAccessories = remember(accessories) { accessories.mapNotNull { AccessoryCatalog.byId[it] } }
     val backgroundId = wornAccessories.firstOrNull { it.slot == AccessorySlot.BACKGROUND }?.id
     val worn = wornAccessories.filter { it.slot != AccessorySlot.BACKGROUND }
@@ -237,9 +266,9 @@ fun CatPet(
                 }
             },
     ) {
-        // 地面软阴影：不跟随猫咪位移，跳起时缩小变淡，反衬高度
+        // 地面软阴影：不跟随猫咪位移，跳起时缩小变淡，反衬高度；体型越小阴影越小
         val hopHeight = -hop.value
-        val shadowScale = (1f - hopHeight / 50f + floatY / 120f).coerceIn(0.55f, 1f)
+        val shadowScale = ((1f - hopHeight / 50f + floatY / 120f).coerceIn(0.55f, 1f)) * animatedBodyScale
         val shadowAlpha = (0.25f - hopHeight / 90f).coerceIn(0.08f, 0.25f)
         Canvas(modifier = Modifier.fillMaxSize()) {
             if (drawBackground) backgroundId?.let { drawAccessoryBackground(it) }
@@ -264,15 +293,25 @@ fun CatPet(
             .graphicsLayer {
                 translationY = (floatY + hop.value) * density
                 rotationZ = tilt.value
-                scaleX = (1f + (1f - squash.value) * 0.6f - (stretch.value - 1f) * 0.4f) * swapScale
-                scaleY = breath * squash.value * stretch.value * swapScale
+                scaleX = (1f + (1f - squash.value) * 0.6f - (stretch.value - 1f) * 0.4f) * swapScale * animatedBodyScale
+                scaleY = breath * squash.value * stretch.value * swapScale * animatedBodyScale
                 alpha = 0.5f + 0.5f * swap.value
                 transformOrigin = TransformOrigin(0.5f, 0.9f)
             }
         if (shownBitmap != null) {
-            Image(bitmap = shownBitmap, contentDescription = mood.label, modifier = imageModifier)
+            Image(
+                bitmap = shownBitmap,
+                contentDescription = mood.label,
+                modifier = imageModifier,
+                colorFilter = furFilter,
+            )
         } else {
-            Image(painter = painterResource(imageForKey(shownKey)), contentDescription = mood.label, modifier = imageModifier)
+            Image(
+                painter = painterResource(imageForKey(shownKey)),
+                contentDescription = mood.label,
+                modifier = imageModifier,
+                colorFilter = furFilter,
+            )
         }
 
         // 配饰叠加在精灵图之上，复用同一套形变，呼吸和跳跃时不会脱节

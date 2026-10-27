@@ -43,6 +43,7 @@ import org.example.project.pet.AccessorySlot
 import org.example.project.pet.AccessoryUnlock
 import org.example.project.pet.equippedAccessoryIds
 import org.example.project.pet.equippedId
+import org.example.project.pet.level
 import org.example.project.pet.stageBackgroundId
 import org.example.project.pet.unlockHint
 import org.example.project.pet.unlockedAccessoryIds
@@ -95,6 +96,7 @@ fun WardrobeScreen(
                         mood = state.pet.mood,
                         onTap = {},
                         accessories = state.pet.equippedAccessoryIds,
+                        level = state.pet.level,
                         modifier = Modifier.size(190.dp),
                         drawBackground = false,
                     )
