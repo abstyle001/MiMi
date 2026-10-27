@@ -106,6 +106,57 @@ class PetRepository(private val settings: Settings) {
         if (settings.hasKey(KEY_LAST_SLEEP_HOURS)) settings.getDouble(KEY_LAST_SLEEP_HOURS, 0.0) else null
     fun setLastSleepHours(hours: Double) = settings.putDouble(KEY_LAST_SLEEP_HOURS, hours)
 
+    // ---- 成就终身计数 ----
+
+    fun lifetimeSteps(): Long = settings.getLong(KEY_LIFETIME_STEPS, 0L)
+
+    fun addLifetimeSteps(amount: Long) {
+        if (amount > 0) settings.putLong(KEY_LIFETIME_STEPS, lifetimeSteps() + amount)
+    }
+
+    fun stepsCountedDate(): String = settings.getString(KEY_STEPS_COUNTED_DATE, "")
+    fun stepsCountedToday(): Long = settings.getLong(KEY_STEPS_COUNTED_TODAY, 0L)
+
+    fun setStepsCounted(date: String, steps: Long) {
+        settings.putString(KEY_STEPS_COUNTED_DATE, date)
+        settings.putLong(KEY_STEPS_COUNTED_TODAY, steps)
+    }
+
+    fun lifetimeFeeds(): Int = settings.getInt(KEY_LIFETIME_FEEDS, 0)
+    fun incrementLifetimeFeeds() = settings.putInt(KEY_LIFETIME_FEEDS, lifetimeFeeds() + 1)
+
+    fun lifetimeChats(): Int = settings.getInt(KEY_LIFETIME_CHATS, 0)
+    fun incrementLifetimeChats() = settings.putInt(KEY_LIFETIME_CHATS, lifetimeChats() + 1)
+
+    fun lifetimePettings(): Int = settings.getInt(KEY_LIFETIME_PETTINGS, 0)
+    fun incrementLifetimePettings() = settings.putInt(KEY_LIFETIME_PETTINGS, lifetimePettings() + 1)
+
+    fun lifetimeSleepCheckIns(): Int = settings.getInt(KEY_LIFETIME_SLEEP_CHECKINS, 0)
+    fun incrementLifetimeSleepCheckIns() =
+        settings.putInt(KEY_LIFETIME_SLEEP_CHECKINS, lifetimeSleepCheckIns() + 1)
+
+    fun sleepStreak(): Int = settings.getInt(KEY_SLEEP_STREAK, 0)
+    fun sleepStreakDate(): String = settings.getString(KEY_SLEEP_STREAK_DATE, "")
+
+    fun setSleepStreak(date: String, streak: Int) {
+        settings.putString(KEY_SLEEP_STREAK_DATE, date)
+        settings.putInt(KEY_SLEEP_STREAK, streak)
+    }
+
+    // ---- 已解锁成就 ----
+
+    fun unlockedAchievements(): Set<String> =
+        settings.getString(KEY_UNLOCKED_ACHIEVEMENTS, "")
+            .split(',')
+            .filter { it.isNotBlank() }
+            .toSet()
+
+    fun addUnlockedAchievements(ids: Set<String>) {
+        if (ids.isEmpty()) return
+        val merged = (unlockedAchievements() + ids).sorted()
+        settings.putString(KEY_UNLOCKED_ACHIEVEMENTS, merged.joinToString(","))
+    }
+
     // ---- 聊天记录 ----
 
     fun loadChatMessages(): List<ChatMessage> =
@@ -161,6 +212,16 @@ class PetRepository(private val settings: Settings) {
         const val KEY_CLAIMED_QUEST_IDS = "claimed_quest_ids"
         const val KEY_SLEEP_SETTLED_DATE = "sleep_settled_date"
         const val KEY_LAST_SLEEP_HOURS = "last_sleep_hours"
+        const val KEY_LIFETIME_STEPS = "lifetime_steps"
+        const val KEY_STEPS_COUNTED_DATE = "steps_counted_date"
+        const val KEY_STEPS_COUNTED_TODAY = "steps_counted_today"
+        const val KEY_LIFETIME_FEEDS = "lifetime_feeds"
+        const val KEY_LIFETIME_CHATS = "lifetime_chats"
+        const val KEY_LIFETIME_PETTINGS = "lifetime_pettings"
+        const val KEY_LIFETIME_SLEEP_CHECKINS = "lifetime_sleep_checkins"
+        const val KEY_SLEEP_STREAK = "sleep_streak"
+        const val KEY_SLEEP_STREAK_DATE = "sleep_streak_date"
+        const val KEY_UNLOCKED_ACHIEVEMENTS = "unlocked_achievements"
         const val KEY_CHAT_MESSAGES = "chat_messages"
         const val MAX_CHAT_HISTORY = 50
         const val KEY_LLM_BASE_URL = "llm_base_url"

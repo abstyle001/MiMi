@@ -20,14 +20,18 @@ import org.example.project.data.WeatherDataSource
 import org.example.project.data.WeatherInfo
 import org.example.project.data.nowEpochMs
 import org.example.project.data.todayString
+import org.example.project.pet.Achievement
+import org.example.project.pet.AchievementState
+import org.example.project.pet.AchievementStats
 import org.example.project.pet.DailyQuestState
 import org.example.project.pet.GrowthEngine
 import org.example.project.pet.PetState
 import org.example.project.pet.QuestActivity
 import org.example.project.pet.MAX_PET_NAME_LENGTH
+import org.example.project.pet.achievementProgress
+import org.example.project.pet.checkAchievements
 import org.example.project.pet.level
 import org.example.project.pet.sanitizePetName
-import org.example.project.pet.xpIntoCurrentLevel
 
 data class PetUiState(
     val pet: PetState = PetState(),
@@ -44,6 +48,7 @@ data class PetUiState(
     val sleepCheckedToday: Boolean = false,
     val lastSleepHours: Double? = null,
     val dailyQuests: List<DailyQuestState> = emptyList(),
+    val achievements: List<AchievementState> = emptyList(),
     val llmConfig: LlmConfig = LlmConfig(),
     val city: CityPreset = CityPreset.DEFAULT,
     /** 一次性提示条（升级 / 结算等），展示几秒后清除 */
@@ -156,6 +161,7 @@ class PetViewModel(
         val cumulative = stepDataSource.cumulativeSteps()
         if (cumulative == null) {
             _ui.update { it.copy(stepsSupported = false) }
+            refreshAchievements()
             return
         }
         val today = todayString()
@@ -167,6 +173,7 @@ class PetViewModel(
         }
         repository.setLastStepCumulative(cumulative)
         val stepsToday = (cumulative - baseline).coerceAtLeast(0L)
+        recordLifetimeSteps(today, stepsToday)
         val earnedXp = GrowthEngine.xpForSteps(stepsToday)
         val givenXp = if (repository.stepXpDate() == today) repository.stepXpToday() else 0
         var pet = _ui.value.pet
@@ -178,6 +185,18 @@ class PetViewModel(
         }
         _ui.update { it.copy(pet = pet, todaySteps = stepsToday, todayStepXp = earnedXp, stepsSupported = true) }
         refreshQuests()
+        refreshAchievements()
+    }
+
+    /** 终身步数按当天增量累计：同日刷新不重复加，设备重启读数回退时只保留已计入的部分 */
+    private fun recordLifetimeSteps(today: String, stepsToday: Long) {
+        val alreadyCounted = if (repository.stepsCountedDate() == today) repository.stepsCountedToday() else 0L
+        val delta = GrowthEngine.lifetimeStepDelta(stepsToday, alreadyCounted)
+        if (delta > 0) repository.addLifetimeSteps(delta)
+        val counted = maxOf(alreadyCounted, stepsToday)
+        if (counted != alreadyCounted || repository.stepsCountedDate() != today) {
+            repository.setStepsCounted(today, counted)
+        }
     }
 
     // ---- 天气 ----
@@ -212,6 +231,7 @@ class PetViewModel(
         }
         used++
         repository.setFeed(today, used)
+        repository.incrementLifetimeFeeds()
         val now = nowEpochMs()
         val pet = _ui.value.pet.copy(
             hunger = (_ui.value.pet.hunger + GrowthEngine.FEED_HUNGER_RESTORE).coerceAtMost(100),
@@ -225,6 +245,7 @@ class PetViewModel(
         _ui.update { it.copy(pet = pet, feedsUsedToday = used) }
         refreshQuests()
         notify("${_ui.value.pet.name}吃得很开心！饱食度 +${GrowthEngine.FEED_HUNGER_RESTORE}")
+        refreshAchievements()
     }
 
     // ---- 睡眠打卡 ----
@@ -237,6 +258,9 @@ class PetViewModel(
         }
         repository.setSleepSettledDate(today)
         repository.setLastSleepHours(hours)
+        repository.incrementLifetimeSleepCheckIns()
+        val streak = GrowthEngine.nextSleepStreak(today, repository.sleepStreakDate(), repository.sleepStreak())
+        repository.setSleepStreak(today, streak)
         val now = nowEpochMs()
         var pet = _ui.value.pet.copy(
             energy = GrowthEngine.energyForSleep(hours),
@@ -254,6 +278,7 @@ class PetViewModel(
             if (xp > 0) "睡眠打卡成功，经验 +$xp，精力恢复到 ${pet.energy}"
             else "睡得太少啦，${_ui.value.pet.name}好困……"
         )
+        refreshAchievements()
     }
 
     // ---- 抚摸 ----
@@ -261,9 +286,11 @@ class PetViewModel(
     fun petThePet() {
         val today = todayString()
         val used = if (repository.pettingDate() == today) repository.pettingCount() else 0
+        repository.incrementLifetimePettings()
         val xp = GrowthEngine.xpForPetting(used)
         if (xp <= 0) {
             notify("${_ui.value.pet.name}蹭了蹭你喵～（今日抚摸经验已用完）")
+            refreshAchievements()
             return
         }
         repository.setPetting(today, used + 1)
@@ -272,6 +299,7 @@ class PetViewModel(
         _ui.update { it.copy(pet = pet, pettingsUsedToday = used + 1) }
         refreshQuests()
         notify("摸摸头～经验 +$xp")
+        refreshAchievements()
     }
 
     // ---- 聊天 ----
@@ -294,6 +322,7 @@ class PetViewModel(
             // 每日消息条数独立计数（XP 封顶后仍要继续累计，供聊天任务进度使用）
             val chatMsgs = if (repository.chatMsgDate() == today) repository.chatMsgCount() else 0
             repository.setChatMsg(today, chatMsgs + 1)
+            repository.incrementLifetimeChats()
 
             val userMsg = ChatMessage(ChatMessage.Role.USER, trimmed, now)
             _ui.update {
@@ -302,6 +331,7 @@ class PetViewModel(
                 it.copy(pet = pet, chatMessages = messages, chatSending = true, chatXpToday = chatXp)
             }
             refreshQuests()
+            refreshAchievements()
 
             val persona = PetPersona(
                 name = pet.name,
@@ -396,6 +426,42 @@ class PetViewModel(
         repository.savePet(pet)
         _ui.update { it.copy(pet = pet, dailyQuests = buildQuests(today)) }
         notify("任务完成！经验 +$xp")
+        refreshAchievements()
+    }
+
+    // ---- 成就 ----
+
+    /** 用终身计数重算成就墙；新解锁立即持久化（成就永不回收，进度回退不影响已解锁状态） */
+    private fun refreshAchievements() {
+        val stats = AchievementStats(
+            level = _ui.value.pet.level,
+            totalSteps = repository.lifetimeSteps(),
+            chatMessages = repository.lifetimeChats(),
+            feeds = repository.lifetimeFeeds(),
+            pettings = repository.lifetimePettings(),
+            sleepCheckIns = repository.lifetimeSleepCheckIns(),
+            sleepStreak = repository.sleepStreak(),
+        )
+        val previouslyUnlocked = repository.unlockedAchievements()
+        val newlyUnlocked = checkAchievements(stats).filter { it.name !in previouslyUnlocked }
+        if (newlyUnlocked.isNotEmpty()) {
+            repository.addUnlockedAchievements(newlyUnlocked.map { it.name }.toSet())
+        }
+        val unlocked = previouslyUnlocked + newlyUnlocked.map { it.name }
+        _ui.update {
+            it.copy(
+                achievements = Achievement.entries.map { achievement ->
+                    AchievementState(
+                        achievement = achievement,
+                        progress = achievementProgress(achievement, stats),
+                        unlocked = achievement.name in unlocked,
+                    )
+                }
+            )
+        }
+        if (newlyUnlocked.isNotEmpty()) {
+            notify("🏆 解锁成就：" + newlyUnlocked.joinToString("、") { it.title })
+        }
     }
 
     private fun notify(message: String) {

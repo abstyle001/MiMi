@@ -157,6 +157,40 @@ object GrowthEngine {
         return (progress * QUEST_BAR_MAX / target).coerceIn(1, QUEST_BAR_MAX)
     }
 
+    // ---- 成就 ----
+
+    /** yyyy-MM-dd → 公历日序号（Howard Hinnant days_from_civil），解析失败返回 null */
+    fun dayNumber(date: String): Int? {
+        val parts = date.split("-")
+        if (parts.size != 3) return null
+        val year = parts[0].toIntOrNull() ?: return null
+        val month = parts[1].toIntOrNull() ?: return null
+        val day = parts[2].toIntOrNull() ?: return null
+        if (month !in 1..12 || day !in 1..31) return null
+        val y = year - if (month <= 2) 1 else 0
+        val era = (if (y >= 0) y else y - 399) / 400
+        val yoe = y - era * 400
+        val doy = (153 * (month + if (month > 2) -3 else 9) + 2) / 5 + day - 1
+        val doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+        return era * 146097 + doe - 719468
+    }
+
+    /** 睡眠打卡连续天数：昨天打过则 +1，否则归 1（同一天重复打卡不重复累加） */
+    fun nextSleepStreak(today: String, lastCheckInDate: String, currentStreak: Int): Int {
+        if (lastCheckInDate.isBlank()) return 1
+        val todayNumber = dayNumber(today) ?: return 1
+        val lastNumber = dayNumber(lastCheckInDate) ?: return 1
+        return when (todayNumber - lastNumber) {
+            0 -> currentStreak.coerceAtLeast(1)
+            1 -> currentStreak + 1
+            else -> 1
+        }
+    }
+
+    /** 终身步数只补记当天新增部分；设备重启导致读数回退时按 0 处理 */
+    fun lifetimeStepDelta(stepsToday: Long, countedToday: Long): Long =
+        (stepsToday - countedToday).coerceAtLeast(0L)
+
     /** 只累加经验；lastUpdatedEpochMs 是衰减结算时钟，由 applyTimeDecay / 喂食 / 睡眠打卡维护 */
     fun addXp(state: PetState, amount: Int): PetState {
         if (amount <= 0) return state

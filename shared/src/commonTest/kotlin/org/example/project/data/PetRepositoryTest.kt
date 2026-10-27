@@ -64,4 +64,39 @@ class PetRepositoryTest {
         assertEquals(setOf("feed", "chat"), repo.claimedQuestIds("2026-10-20"))
         assertEquals(emptySet(), repo.claimedQuestIds("2026-10-21"))
     }
+
+    @Test
+    fun lifetimeCountersSurviveRestart() {
+        val settings = MapSettings()
+        val repo = PetRepository(settings)
+        repo.addLifetimeSteps(1200L)
+        repo.addLifetimeSteps(800L)
+        repo.incrementLifetimeFeeds()
+        repo.incrementLifetimeChats()
+        repo.incrementLifetimeChats()
+        repo.incrementLifetimePettings()
+        repo.incrementLifetimeSleepCheckIns()
+        repo.setSleepStreak("2026-10-27", 3)
+        repo.setStepsCounted("2026-10-27", 2000L)
+
+        val reopened = PetRepository(settings)
+        assertEquals(2000L, reopened.lifetimeSteps())
+        assertEquals(1, reopened.lifetimeFeeds())
+        assertEquals(2, reopened.lifetimeChats())
+        assertEquals(1, reopened.lifetimePettings())
+        assertEquals(1, reopened.lifetimeSleepCheckIns())
+        assertEquals(3, reopened.sleepStreak())
+        assertEquals("2026-10-27", reopened.sleepStreakDate())
+        assertEquals("2026-10-27", reopened.stepsCountedDate())
+        assertEquals(2000L, reopened.stepsCountedToday())
+    }
+
+    @Test
+    fun unlockedAchievementsMergeWithoutDuplicates() {
+        val settings = MapSettings()
+        val repo = PetRepository(settings)
+        repo.addUnlockedAchievements(setOf("FIRST_LEVEL_UP"))
+        repo.addUnlockedAchievements(setOf("FIRST_LEVEL_UP", "STEPS_10K"))
+        assertEquals(setOf("FIRST_LEVEL_UP", "STEPS_10K"), PetRepository(settings).unlockedAchievements())
+    }
 }

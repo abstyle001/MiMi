@@ -1,6 +1,9 @@
 package org.example.project.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,14 +14,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
@@ -27,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,11 +48,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.example.project.chat.LlmConfig
 import org.example.project.data.CityPreset
+import org.example.project.pet.Achievement
+import org.example.project.pet.AchievementState
 import kotlin.math.roundToInt
 
 @Composable
@@ -57,6 +76,7 @@ fun StatsScreen(
     ) {
         SleepCard(state, onCheckInSleep)
         TodayStatsCard(state)
+        AchievementCard(state.achievements)
         LlmSettingsCard(state, onSaveSettings)
     }
 }
@@ -111,6 +131,122 @@ private fun TodayStatsCard(state: PetUiState) {
             Text("喂食：${state.feedsUsedToday} 次 · 抚摸：${state.pettingsUsedToday} 次")
         }
     }
+}
+
+@Composable
+private fun AchievementCard(achievements: List<AchievementState>) {
+    if (achievements.isEmpty()) return
+    var selected by remember { mutableStateOf<AchievementState?>(null) }
+    val unlockedCount = achievements.count { it.unlocked }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionHeader(Icons.Filled.EmojiEvents, "成就墙")
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "已解锁 $unlockedCount/${achievements.size}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            achievements.chunked(3).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { item ->
+                        AchievementBadge(
+                            state = item,
+                            onClick = { selected = item },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+    selected?.let { item ->
+        AchievementDetailDialog(state = item, onDismiss = { selected = null })
+    }
+}
+
+@Composable
+private fun AchievementBadge(
+    state: AchievementState,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val unlocked = state.unlocked
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(
+                    if (unlocked) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surfaceContainerHighest
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                achievementIcon(state.achievement),
+                contentDescription = state.achievement.title,
+                modifier = Modifier.size(22.dp),
+                tint = if (unlocked) MaterialTheme.colorScheme.onPrimaryContainer
+                else MaterialTheme.colorScheme.outline,
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            state.achievement.title,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (unlocked) FontWeight.SemiBold else FontWeight.Normal,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            if (unlocked) "已解锁" else "${state.progress}/${state.achievement.target}",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (unlocked) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun AchievementDetailDialog(state: AchievementState, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(state.achievement.title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(state.achievement.description)
+                Text(
+                    if (state.unlocked) "已解锁"
+                    else "进度：${state.progress}/${state.achievement.target}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (state.unlocked) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("知道了") }
+        },
+    )
+}
+
+private fun achievementIcon(achievement: Achievement): ImageVector = when (achievement) {
+    Achievement.FIRST_LEVEL_UP -> Icons.Filled.Star
+    Achievement.STEPS_10K, Achievement.STEPS_100K -> Icons.AutoMirrored.Filled.DirectionsWalk
+    Achievement.CHAT_10, Achievement.CHAT_100 -> Icons.AutoMirrored.Filled.Chat
+    Achievement.FEED_10, Achievement.FEED_50 -> Icons.Filled.Restaurant
+    Achievement.PET_100 -> Icons.Filled.Favorite
+    Achievement.SLEEP_10 -> Icons.Filled.Bedtime
+    Achievement.STREAK_7 -> Icons.Filled.LocalFireDepartment
 }
 
 @Composable

@@ -178,4 +178,29 @@ class GrowthEngineTest {
         assertEquals(3, GrowthEngine.questFillCount(2500, 5000))
         assertEquals(6, GrowthEngine.questFillCount(5000, 5000))
     }
+
+    // ---- 成就 ----
+
+    @Test
+    fun sleepStreakContinuesOnlyOnConsecutiveDays() {
+        assertEquals(1, GrowthEngine.nextSleepStreak("2026-10-27", "", 0))
+        assertEquals(4, GrowthEngine.nextSleepStreak("2026-10-27", "2026-10-27", 4))
+        assertEquals(5, GrowthEngine.nextSleepStreak("2026-10-27", "2026-10-26", 4))
+        assertEquals(1, GrowthEngine.nextSleepStreak("2026-10-27", "2026-10-25", 9))
+    }
+
+    @Test
+    fun sleepStreakCrossesMonthAndYearBoundaries() {
+        assertEquals(3, GrowthEngine.nextSleepStreak("2026-11-01", "2026-10-31", 2))
+        assertEquals(2, GrowthEngine.nextSleepStreak("2027-01-01", "2026-12-31", 1))
+        assertEquals(2, GrowthEngine.nextSleepStreak("2024-03-01", "2024-02-29", 1))
+    }
+
+    @Test
+    fun lifetimeStepDeltaOnlyCountsNewSteps() {
+        assertEquals(0L, GrowthEngine.lifetimeStepDelta(1000L, 1000L))
+        assertEquals(500L, GrowthEngine.lifetimeStepDelta(1500L, 1000L))
+        // 设备重启导致当日读数回退，不能倒扣终身步数
+        assertEquals(0L, GrowthEngine.lifetimeStepDelta(1000L, 3000L))
+    }
 }
