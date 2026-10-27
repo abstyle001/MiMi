@@ -99,4 +99,12 @@ class PetRepositoryTest {
         repo.addUnlockedAchievements(setOf("FIRST_LEVEL_UP", "STEPS_10K"))
         assertEquals(setOf("FIRST_LEVEL_UP", "STEPS_10K"), PetRepository(settings).unlockedAchievements())
     }
+
+    @Test
+    fun gameXpUsesDateKey() {
+        val repo = PetRepository(MapSettings())
+        repo.setGameXp("2026-10-27", 6)
+        assertEquals("2026-10-27", repo.gameXpDate())
+        assertEquals(6, repo.gameXpToday())
+    }
 }

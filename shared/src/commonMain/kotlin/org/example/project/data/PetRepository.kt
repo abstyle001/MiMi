@@ -74,6 +74,15 @@ class PetRepository(private val settings: Settings) {
         settings.putInt(KEY_PETTING_COUNT, count)
     }
 
+    // ---- 迷你游戏 XP ----
+
+    fun gameXpDate(): String = settings.getString(KEY_GAME_XP_DATE, "")
+    fun gameXpToday(): Int = settings.getInt(KEY_GAME_XP_TODAY, 0)
+    fun setGameXp(date: String, xp: Int) {
+        settings.putString(KEY_GAME_XP_DATE, date)
+        settings.putInt(KEY_GAME_XP_TODAY, xp)
+    }
+
     // ---- 每日聊天消息条数（任务进度用，与 chatXp 上限解耦） ----
 
     fun chatMsgDate(): String = settings.getString(KEY_CHAT_MSG_DATE, "")
@@ -208,6 +217,8 @@ class PetRepository(private val settings: Settings) {
         const val KEY_PETTING_COUNT = "petting_count"
         const val KEY_CHAT_MSG_DATE = "chat_msg_date"
         const val KEY_CHAT_MSG_COUNT = "chat_msg_count"
+        const val KEY_GAME_XP_DATE = "game_xp_date"
+        const val KEY_GAME_XP_TODAY = "game_xp_today"
         const val KEY_QUEST_DATE = "quest_date"
         const val KEY_CLAIMED_QUEST_IDS = "claimed_quest_ids"
         const val KEY_SLEEP_SETTLED_DATE = "sleep_settled_date"

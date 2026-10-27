@@ -128,6 +128,7 @@ private fun TodayStatsCard(state: PetUiState) {
             Spacer(Modifier.height(12.dp))
             Text("步数：${state.todaySteps} 步（+${state.todayStepXp} XP）")
             Text("聊天互动：+${state.chatXpToday} XP")
+            Text("游戏互动：+${state.gameXpToday} XP")
             Text("喂食：${state.feedsUsedToday} 次 · 抚摸：${state.pettingsUsedToday} 次")
         }
     }

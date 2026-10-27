@@ -43,6 +43,7 @@ data class PetUiState(
     val chatMessages: List<ChatMessage> = emptyList(),
     val chatSending: Boolean = false,
     val chatXpToday: Int = 0,
+    val gameXpToday: Int = 0,
     val feedsUsedToday: Int = 0,
     val pettingsUsedToday: Int = 0,
     val sleepCheckedToday: Boolean = false,
@@ -101,6 +102,7 @@ class PetViewModel(
                 weatherDesc = weather?.let { w -> GrowthEngine.weatherDescription(w.weatherCode) } ?: "获取失败",
                 sleepCheckedToday = repository.sleepSettledDate() == today,
                 chatXpToday = if (repository.chatXpDate() == today) repository.chatXpToday() else 0,
+                gameXpToday = if (repository.gameXpDate() == today) repository.gameXpToday() else 0,
                 feedsUsedToday = if (repository.feedDate() == today) repository.feedCount() else 0,
                 pettingsUsedToday = if (repository.pettingDate() == today) repository.pettingCount() else 0,
                 dailyQuests = buildQuests(today),
@@ -128,6 +130,7 @@ class PetViewModel(
             it.copy(
                 sleepCheckedToday = repository.sleepSettledDate() == today,
                 chatXpToday = if (repository.chatXpDate() == today) repository.chatXpToday() else 0,
+                gameXpToday = if (repository.gameXpDate() == today) repository.gameXpToday() else 0,
                 feedsUsedToday = if (repository.feedDate() == today) repository.feedCount() else 0,
                 pettingsUsedToday = if (repository.pettingDate() == today) repository.pettingCount() else 0,
                 dailyQuests = buildQuests(today),
@@ -426,6 +429,29 @@ class PetViewModel(
         repository.savePet(pet)
         _ui.update { it.copy(pet = pet, dailyQuests = buildQuests(today)) }
         notify("任务完成！经验 +$xp")
+        refreshAchievements()
+    }
+
+    // ---- 迷你游戏 ----
+
+    /** 一局结束结算：按接住数量换 XP，每日封顶；重复游玩只会把当天总量补到上限 */
+    fun finishFishGame(score: Int) {
+        val today = todayString()
+        val used = if (repository.gameXpDate() == today) repository.gameXpToday() else 0
+        val xp = GrowthEngine.xpForFishGame(score, used)
+        if (xp > 0) {
+            repository.setGameXp(today, used + xp)
+            val pet = addXp(_ui.value.pet, xp)
+            repository.savePet(pet)
+            _ui.update { it.copy(pet = pet, gameXpToday = used + xp) }
+        }
+        notify(
+            when {
+                xp > 0 -> "接住 $score 条小鱼干，经验 +$xp"
+                score > 0 -> "接住 $score 条小鱼干，今日游戏经验已满"
+                else -> "这局没接到小鱼干，再试试吧"
+            }
+        )
         refreshAchievements()
     }
 

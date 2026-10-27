@@ -203,4 +203,14 @@ class GrowthEngineTest {
         // 设备重启导致当日读数回退，不能倒扣终身步数
         assertEquals(0L, GrowthEngine.lifetimeStepDelta(1000L, 3000L))
     }
+
+    @Test
+    fun fishGameXpIsCappedPerDay() {
+        assertEquals(0, GrowthEngine.xpForFishGame(0, 0))
+        assertEquals(5, GrowthEngine.xpForFishGame(5, 0))
+        assertEquals(10, GrowthEngine.xpForFishGame(18, 0))
+        assertEquals(2, GrowthEngine.xpForFishGame(9, 8))
+        assertEquals(0, GrowthEngine.xpForFishGame(9, 10))
+        assertEquals(0, GrowthEngine.xpForFishGame(-3, 0))
+    }
 }

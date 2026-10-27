@@ -13,6 +13,7 @@ import org.example.project.pet.PetMood
 import org.example.project.pet.PetState
 import org.example.project.ui.AppTheme
 import org.example.project.ui.ChatScreen
+import org.example.project.ui.FishGameScreen
 import org.example.project.ui.PetUiState
 import org.example.project.ui.StatsScreen
 import org.example.project.ui.cat.CatPet
@@ -98,6 +99,37 @@ class CatPreviewRender {
             }
             val pngBytes = scene.render().encodeToData()?.bytes ?: error("渲染成就墙失败")
             File(dir, "achievement_wall.png").writeBytes(pngBytes)
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    fun renderFishGame() {
+        val dir = File("build/catpreviews").apply { mkdirs() }
+        val scene = ImageComposeScene(width = 560, height = 1100, density = Density(2f))
+        try {
+            scene.setContent {
+                AppTheme {
+                    FishGameScreen(gameXpToday = 3, onFinish = {}, onExit = {})
+                }
+            }
+            // 推进约 3 秒游戏时间，让画面里出现掉落的鱼和炸弹
+            var frame = 0L
+            repeat(90) {
+                frame += 32_000_000L
+                scene.render(frame)
+            }
+            val pngBytes = scene.render(frame).encodeToData()?.bytes ?: error("渲染游戏页失败")
+            File(dir, "fish_game.png").writeBytes(pngBytes)
+
+            // 继续推进到 30 秒结束，检查结算面板
+            repeat(950) {
+                frame += 32_000_000L
+                scene.render(frame)
+            }
+            val resultBytes = scene.render(frame).encodeToData()?.bytes ?: error("渲染游戏结算失败")
+            File(dir, "fish_game_result.png").writeBytes(resultBytes)
         } finally {
             scene.close()
         }

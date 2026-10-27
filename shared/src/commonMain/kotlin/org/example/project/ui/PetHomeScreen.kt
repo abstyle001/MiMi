@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.AlertDialog
@@ -36,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
@@ -44,6 +46,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,8 +74,20 @@ fun PetHomeScreen(
     onPetTap: () -> Unit,
     onRename: (String) -> Unit,
     onClaimQuests: () -> Unit,
+    onGameFinished: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var showGame by rememberSaveable { mutableStateOf(false) }
+    if (showGame) {
+        FishGameScreen(
+            gameXpToday = state.gameXpToday,
+            onFinish = onGameFinished,
+            onExit = { showGame = false },
+            modifier = modifier,
+        )
+        return
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -192,6 +207,13 @@ fun PetHomeScreen(
             Icon(Icons.Filled.Restaurant, null, Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
             Text("喂食（今日剩余 $feedsLeft 次）")
+        }
+
+        // 迷你游戏
+        OutlinedButton(onClick = { showGame = true }) {
+            Icon(Icons.Filled.SportsEsports, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("玩游戏 · 接小鱼干")
         }
 
         // 每日任务

@@ -11,6 +11,8 @@ object GrowthEngine {
     const val MAX_FEEDS_PER_DAY = 3
     const val PETTING_XP = 1
     const val MAX_PETTING_XP_PER_DAY = 5
+    const val FISH_GAME_XP_PER_FISH = 1
+    const val MAX_FISH_GAME_XP_PER_DAY = 10
     const val HUNGER_DECAY_PER_HOUR = 2
     const val ENERGY_DECAY_PER_HOUR = 1
 
@@ -32,6 +34,13 @@ object GrowthEngine {
     /** 抚摸/点击：每日前 MAX_PETTING_XP_PER_DAY 次每次 +1 */
     fun xpForPetting(usedToday: Int): Int =
         if (usedToday < MAX_PETTING_XP_PER_DAY) PETTING_XP else 0
+
+    /** 接小鱼干：每条鱼 1 XP，每日封顶；超出部分不结转 */
+    fun xpForFishGame(score: Int, usedToday: Int): Int {
+        val remaining = (MAX_FISH_GAME_XP_PER_DAY - usedToday)
+            .coerceIn(0, MAX_FISH_GAME_XP_PER_DAY)
+        return (score.coerceAtLeast(0) * FISH_GAME_XP_PER_FISH).coerceAtMost(remaining)
+    }
 
     fun xpForSleep(hours: Double): Int = when {
         hours >= 7.0 -> 15
